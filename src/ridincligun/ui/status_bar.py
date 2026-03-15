@@ -1,0 +1,80 @@
+"""Status bar widget for ridinCLIgun.
+
+Minimal tags at the bottom of the screen. Reads from AppState.
+"""
+
+from __future__ import annotations
+
+from rich.segment import Segment
+from rich.style import Style
+from textual.strip import Strip
+from textual.widget import Widget
+
+
+class StatusBar(Widget):
+    """Single-line status bar at the bottom of the app."""
+
+    DEFAULT_CSS = """
+    StatusBar {
+        height: 1;
+        background: #0f3460;
+        color: #e0e0e0;
+        dock: bottom;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._ai_enabled = False
+        self._secret_mode = False
+        self._shell_name = "zsh"
+
+    def update_state(
+        self,
+        ai_enabled: bool | None = None,
+        secret_mode: bool | None = None,
+        shell_name: str | None = None,
+    ) -> None:
+        """Update displayed state and refresh."""
+        if ai_enabled is not None:
+            self._ai_enabled = ai_enabled
+        if secret_mode is not None:
+            self._secret_mode = secret_mode
+        if shell_name is not None:
+            self._shell_name = shell_name
+        self.refresh()
+
+    def render_line(self, y: int) -> Strip:
+        """Render the single status line."""
+        if y != 0:
+            return Strip.blank(self.size.width)
+
+        width = self.size.width
+        dim = Style.parse("dim")
+        ai_style = Style.parse("bold green") if self._ai_enabled else Style.parse("dim red")
+        secret_style = Style.parse("bold yellow") if self._secret_mode else Style.parse("dim")
+
+        ai_text = "on" if self._ai_enabled else "off"
+        secret_text = "on" if self._secret_mode else "off"
+
+        left_segments = [
+            Segment("  AI: ", dim),
+            Segment(ai_text, ai_style),
+            Segment("  ◆  ", dim),
+            Segment("Secret: ", dim),
+            Segment(secret_text, secret_style),
+        ]
+
+        right_segments = [
+            Segment("Ctrl+G → help", dim),
+            Segment("   ", dim),
+            Segment(self._shell_name, Style.parse("dim cyan")),
+            Segment("  ", dim),
+        ]
+
+        left_len = sum(len(s.text) for s in left_segments)
+        right_len = sum(len(s.text) for s in right_segments)
+        padding = max(1, width - left_len - right_len)
+
+        segments = [*left_segments, Segment(" " * padding, dim), *right_segments]
+        return Strip(segments, width)
