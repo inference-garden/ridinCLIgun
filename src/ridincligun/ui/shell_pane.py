@@ -16,6 +16,7 @@ from textual.message import Message
 from textual.strip import Strip
 from textual.widget import Widget
 
+from ridincligun.shell.input_parser import extract_current_command
 from ridincligun.shell.pty_process import PtyProcess
 
 # Map pyte color names to Rich color names
@@ -76,12 +77,21 @@ class ShellPane(Widget, can_focus=True):
             super().__init__()
             self.command = command
 
+    class AnyKeyPressed(Message):
+        """Posted on every key press that the shell handles. Used for help dismissal."""
+        pass
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._pty = PtyProcess()
         self._screen = pyte.Screen(80, 24)
         self._stream = pyte.Stream(self._screen)
         self._read_task: asyncio.Task | None = None
+        self._last_command: str = ""
+        # Text selection state (row, col) — None when no selection
+        self._sel_start: tuple[int, int] | None = None
+        self._sel_end: tuple[int, int] | None = None
+        self._selecting: bool = False  # True during mouse drag
 
     @property
     def pty_process(self) -> PtyProcess:
@@ -102,31 +112,163 @@ class ShellPane(Widget, can_focus=True):
             self._read_task.cancel()
         self._pty.stop()
 
+    def restart_shell(self) -> None:
+        """Stop the current shell and start a fresh one."""
+        # Stop existing
+        if self._read_task:
+            self._read_task.cancel()
+        self._pty.stop()
+
+        # Fresh pyte screen
+        rows = self.size.height or 24
+        cols = self.size.width or 80
+        self._screen = pyte.Screen(cols, rows)
+        self._stream = pyte.Stream(self._screen)
+        self._last_command = ""
+
+        # Start new PTY
+        self._pty = PtyProcess()
+        self._pty.start()
+        self._pty.resize(rows, cols)
+        self._read_task = asyncio.create_task(self._read_loop())
+        self.refresh()
+
     def on_resize(self, event: events.Resize) -> None:
-        """Forward resize events to PTY and pyte screen."""
+        """Forward resize events to PTY and pyte screen.
+
+        Strategy (option 5 — "snapshot + Ctrl+L"):
+        1. Create a fresh pyte screen at the new dimensions.
+        2. Tell the PTY the new size (triggers SIGWINCH).
+        3. Send Ctrl+L to the shell so it repaints the current prompt.
+
+        This means: scrollback above the viewport is lost on resize, but the
+        current screen is correct. A real fix requires a reflow-capable
+        terminal emulator (planned for v0.3).
+        """
         rows = event.size.height
         cols = event.size.width
         if rows > 0 and cols > 0:
+            # Fresh screen at new dimensions — clean slate
+            self._screen = pyte.Screen(cols, rows)
+            self._stream = pyte.Stream(self._screen)
+            # Tell the PTY the new size — shell receives SIGWINCH
             self._pty.resize(rows, cols)
-            self._screen.resize(rows, cols)
+            # Ask the shell to redraw the current prompt
+            self._pty.write(b"\x0c")  # Ctrl+L
+            self.refresh()
+
+    # ── Mouse selection ───────────────────────────────────────────
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        """Start text selection on mouse down."""
+        if event.button == 1:  # Left click
+            self._sel_start = (event.y, event.x)
+            self._sel_end = (event.y, event.x)
+            self._selecting = True
+            self.capture_mouse()
+            self.refresh()
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        """Extend selection while dragging."""
+        if self._selecting:
+            self._sel_end = (event.y, event.x)
+            self.refresh()
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        """End selection on mouse release."""
+        if self._selecting and event.button == 1:
+            self._sel_end = (event.y, event.x)
+            self._selecting = False
+            self.release_mouse()
+            # If start == end, it was just a click — clear selection
+            if self._sel_start == self._sel_end:
+                self.clear_selection()
+            self.refresh()
+
+    def clear_selection(self) -> None:
+        """Clear any active text selection."""
+        self._sel_start = None
+        self._sel_end = None
+        self._selecting = False
+        self.refresh()
+
+    def has_selection(self) -> bool:
+        """Whether there is an active text selection."""
+        return (
+            self._sel_start is not None
+            and self._sel_end is not None
+            and self._sel_start != self._sel_end
+        )
+
+    def get_selected_text(self) -> str:
+        """Return the selected text from the pyte screen buffer."""
+        if not self.has_selection():
+            return ""
+
+        start, end = self._selection_bounds()
+        lines = []
+
+        for y in range(start[0], end[0] + 1):
+            if y >= self._screen.lines:
+                break
+            row = self._screen.buffer[y]
+
+            # Determine column range for this row
+            col_start = start[1] if y == start[0] else 0
+            col_end = end[1] if y == end[0] else self._screen.columns - 1
+            col_end = min(col_end, self._screen.columns - 1)
+
+            line = "".join(
+                row[x].data if row[x].data else " "
+                for x in range(col_start, col_end + 1)
+            ).rstrip()
+            lines.append(line)
+
+        # Strip trailing empty lines
+        while lines and not lines[-1]:
+            lines.pop()
+
+        return "\n".join(lines)
+
+    def _selection_bounds(self) -> tuple[tuple[int, int], tuple[int, int]]:
+        """Return (start, end) in normalized order (top-left to bottom-right)."""
+        s = self._sel_start or (0, 0)
+        e = self._sel_end or (0, 0)
+        if s > e:
+            s, e = e, s
+        return s, e
+
+    def _is_selected(self, y: int, x: int) -> bool:
+        """Check if a cell is within the current selection."""
+        if not self.has_selection():
+            return False
+        start, end = self._selection_bounds()
+        # Linear position comparison for multi-line selection
+        pos = (y, x)
+        return start <= pos <= end
 
     # Keys reserved for the app (must NOT be sent to PTY)
     _APP_KEYS: set[str] = {
         "ctrl+q",      # quit
         "ctrl+g",      # leader key
-        "ctrl+1",      # focus shell
-        "ctrl+2",      # focus advisory
-        "f6",          # shrink divider
-        "f7",          # grow divider
+        "f6",          # divider left
+        "f7",          # divider right
     }
 
     def on_key(self, event: events.Key) -> None:
         """Forward keyboard input to the PTY.
 
         Keys in _APP_KEYS are left alone so they bubble up to the App.
+        When the app's leader key is active, ALL keys pass through.
         """
         # Let app-level keys pass through (don't send to PTY, don't stop)
         if event.key in self._APP_KEYS:
+            return
+
+        # When leader mode is active, let all keys bubble to the App
+        from ridincligun.app import RidinCLIgunApp  # noqa: E402
+
+        if isinstance(self.app, RidinCLIgunApp) and self.app._leader.active:
             return
 
         # Key-to-bytes mapping for shell-native special keys
@@ -156,10 +298,19 @@ class ShellPane(Widget, can_focus=True):
 
         if event.key in key_map:
             self._pty.write(key_map[event.key])
+            self.clear_selection()
+            self.post_message(self.AnyKeyPressed())
+            self._check_command_changed()
             event.stop()
         elif event.character is not None:
             self._pty.write(event.character.encode("utf-8"))
+            self.clear_selection()
+            self.post_message(self.AnyKeyPressed())
+            self._check_command_changed()
             event.stop()
+
+    # Selection highlight style
+    _SEL_STYLE = Style(color="white", bgcolor="#44475a")
 
     def render_line(self, y: int) -> Strip:
         """Render a single line from the pyte screen as Segments."""
@@ -170,8 +321,9 @@ class ShellPane(Widget, can_focus=True):
         line = self._screen.buffer[y]
         segments: list[Segment] = []
         cols = min(self._screen.columns, width)
+        has_sel = self.has_selection()
 
-        # Batch consecutive characters with the same style
+        # Batch consecutive characters with the same style + selection state
         current_text = ""
         current_style: Style | None = None
 
@@ -179,6 +331,10 @@ class ShellPane(Widget, can_focus=True):
             char = line[x]
             style = _build_style(char)
             char_data = char.data if char.data else " "
+
+            # Apply selection highlight
+            if has_sel and self._is_selected(y, x):
+                style = self._SEL_STYLE
 
             if style == current_style:
                 current_text += char_data
@@ -199,6 +355,13 @@ class ShellPane(Widget, can_focus=True):
 
         return Strip(segments, width)
 
+    def _check_command_changed(self) -> None:
+        """Check if the current command input changed and notify the app."""
+        command = extract_current_command(self._screen)
+        if command != self._last_command:
+            self._last_command = command
+            self.post_message(self.InputChanged(command))
+
     async def _read_loop(self) -> None:
         """Continuously read from PTY and update the pyte screen."""
         while self._pty.running:
@@ -209,6 +372,7 @@ class ShellPane(Widget, can_focus=True):
                 except Exception:
                     # pyte can occasionally choke on malformed sequences
                     pass
+                self._check_command_changed()
                 self.refresh()
             else:
                 # No data available, yield to event loop briefly

@@ -1,0 +1,149 @@
+{
+  "version": "0.2.0",
+  "families": [
+    {
+      "id": "rm",
+      "name": "Remove files",
+      "patterns": [
+        {
+          "regex": "rm\\s+.*-[^\\s]*r[^\\s]*f|rm\\s+.*-[^\\s]*f[^\\s]*r|rm\\s+-rf|rm\\s+-fr",
+          "risk": "danger",
+          "summary": "Recursive forced deletion — removes files permanently without confirmation.",
+          "suggestion": "Use 'rm -ri' for interactive confirmation, or 'trash' to move to Trash."
+        },
+        {
+          "regex": "rm\\s+.*-[^\\s]*r",
+          "risk": "warning",
+          "summary": "Recursive deletion — removes directory trees.",
+          "suggestion": "Double-check the target path. Consider 'rm -ri' for confirmation."
+        },
+        {
+          "regex": "rm\\s+(/|~/?\\s|\\*)",
+          "risk": "danger",
+          "summary": "Deleting root, home, or everything in current directory.",
+          "suggestion": "This is almost certainly not what you want. Be very specific about the target."
+        }
+      ]
+    },
+    {
+      "id": "chmod",
+      "name": "Change permissions",
+      "patterns": [
+        {
+          "regex": "chmod\\s+.*-[^\\s]*R.*777|chmod\\s+777\\s+.*-[^\\s]*R|chmod\\s+-R\\s+777",
+          "risk": "danger",
+          "summary": "Recursively setting world-readable/writable/executable permissions.",
+          "suggestion": "Use specific permissions (e.g., 755 for dirs, 644 for files). Avoid 777."
+        },
+        {
+          "regex": "chmod\\s+.*777",
+          "risk": "warning",
+          "summary": "Setting world-readable/writable/executable permissions.",
+          "suggestion": "755 (dirs) or 644 (files) is usually what you need. 777 is a security risk."
+        }
+      ]
+    },
+    {
+      "id": "curl_pipe",
+      "name": "Piped downloads",
+      "patterns": [
+        {
+          "regex": "curl\\s.*\\|\\s*(sudo\\s+)?(ba)?sh|wget\\s.*\\|\\s*(sudo\\s+)?(ba)?sh",
+          "risk": "danger",
+          "summary": "Downloading and executing code directly — you can't inspect it first.",
+          "suggestion": "Download the script first, review it, then execute: curl -o script.sh URL && less script.sh && bash script.sh"
+        }
+      ]
+    },
+    {
+      "id": "dd",
+      "name": "Disk/device operations",
+      "patterns": [
+        {
+          "regex": "dd\\s+.*of\\s*=\\s*/dev/",
+          "risk": "danger",
+          "summary": "Writing directly to a device — can overwrite your disk.",
+          "suggestion": "Triple-check the target device. 'of=/dev/sda' will destroy your system disk."
+        }
+      ]
+    },
+    {
+      "id": "sudo",
+      "name": "Elevated privileges",
+      "patterns": [
+        {
+          "regex": "sudo\\s+rm\\s+.*-[^\\s]*r[^\\s]*f|sudo\\s+rm\\s+.*-[^\\s]*f[^\\s]*r|sudo\\s+rm\\s+-rf",
+          "risk": "danger",
+          "summary": "Recursive forced deletion with root privileges — maximum damage potential.",
+          "suggestion": "Be extremely careful. Consider running without sudo first to see what would be deleted."
+        },
+        {
+          "regex": "sudo\\s+chmod|sudo\\s+chown",
+          "risk": "warning",
+          "summary": "Changing ownership or permissions with root privileges.",
+          "suggestion": "Ensure you're targeting the correct path. Recursive changes can break your system."
+        }
+      ]
+    },
+    {
+      "id": "git_destructive",
+      "name": "Destructive git operations",
+      "patterns": [
+        {
+          "regex": "git\\s+push\\s+.*--force(?!-with-lease)|git\\s+push\\s+-f\\b",
+          "risk": "warning",
+          "summary": "Force push overwrites remote history — other collaborators will lose work.",
+          "suggestion": "Use 'git push --force-with-lease' instead — it fails if someone else pushed."
+        },
+        {
+          "regex": "git\\s+reset\\s+--hard",
+          "risk": "warning",
+          "summary": "Hard reset discards all uncommitted changes permanently.",
+          "suggestion": "Consider 'git stash' first to save your changes, or use 'git reset --soft'."
+        },
+        {
+          "regex": "git\\s+clean\\s+.*-[^\\s]*f",
+          "risk": "warning",
+          "summary": "Removes untracked files permanently.",
+          "suggestion": "Run 'git clean -n' first (dry run) to see what would be deleted."
+        }
+      ]
+    },
+    {
+      "id": "network",
+      "name": "Network exposure",
+      "patterns": [
+        {
+          "regex": "python\\s+.*-m\\s+http\\.server|python3\\s+.*-m\\s+http\\.server",
+          "risk": "caution",
+          "summary": "Starts an HTTP server that exposes the current directory to the network.",
+          "suggestion": "Bind to localhost only: python -m http.server --bind 127.0.0.1"
+        },
+        {
+          "regex": "ngrok|localtunnel|expose\\s",
+          "risk": "caution",
+          "summary": "Exposes a local service to the public internet.",
+          "suggestion": "Make sure you know what service you're exposing and who can access it."
+        }
+      ]
+    },
+    {
+      "id": "env_secrets",
+      "name": "Environment and secrets",
+      "patterns": [
+        {
+          "regex": "echo\\s+.*\\$\\{?(PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY)",
+          "risk": "warning",
+          "summary": "Printing sensitive environment variables — may appear in logs or history.",
+          "suggestion": "Avoid echoing secrets. Use 'printenv VAR | wc -c' to check if set without exposing."
+        },
+        {
+          "regex": "export\\s+(PASSWORD|SECRET|TOKEN|API_KEY|PRIVATE_KEY)\\s*=",
+          "risk": "caution",
+          "summary": "Setting secrets as environment variables — will appear in shell history.",
+          "suggestion": "Use a .env file or secrets manager instead. Prefix with a space to avoid history (if HISTCONTROL=ignorespace)."
+        }
+      ]
+    }
+  ]
+}

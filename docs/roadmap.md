@@ -4,19 +4,18 @@ Next work only. Updated as steps complete.
 
 ---
 
-## Current: Step 1 ✅
+## Step 1 ✅
 **Project scaffold + working shell**
-- Two-pane Textual app with PTY-backed shell
-- Advisory pane (placeholder), status bar
-- Basic entry point
 
-## Next: Step 2
+## Step 2 ✅
 **Shortcuts + divider + config**
-- Ctrl+G leader key state machine
+- Ctrl+G leader key with timeout and follow-up dispatch
 - Pane focus (Ctrl+1/2), divider resize (F6/F7)
-- Config loading from ~/.config/ridincligun/
+- Config loading (config.toml + .env)
+- AI/Secret toggles (Ctrl+G,A / Ctrl+G,S) with status bar sync
+- Help display (Ctrl+G,H)
 
-## Then: Step 3
+## Current: Step 3
 **Local advisory engine**
 - Command catalog (JSON, 20+ patterns)
 - Local warning engine (pattern matching)

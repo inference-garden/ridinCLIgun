@@ -28,12 +28,14 @@ class StatusBar(Widget):
         self._ai_enabled = False
         self._secret_mode = False
         self._shell_name = "zsh"
+        self._leader_active = False
 
     def update_state(
         self,
         ai_enabled: bool | None = None,
         secret_mode: bool | None = None,
         shell_name: str | None = None,
+        leader_active: bool | None = None,
     ) -> None:
         """Update displayed state and refresh."""
         if ai_enabled is not None:
@@ -42,6 +44,8 @@ class StatusBar(Widget):
             self._secret_mode = secret_mode
         if shell_name is not None:
             self._shell_name = shell_name
+        if leader_active is not None:
+            self._leader_active = leader_active
         self.refresh()
 
     def render_line(self, y: int) -> Strip:
@@ -65,12 +69,21 @@ class StatusBar(Widget):
             Segment(secret_text, secret_style),
         ]
 
-        right_segments = [
-            Segment("Ctrl+G → help", dim),
-            Segment("   ", dim),
-            Segment(self._shell_name, Style.parse("dim cyan")),
-            Segment("  ", dim),
-        ]
+        # Show leader key waiting indicator in the right section
+        if self._leader_active:
+            right_segments = [
+                Segment("⌨ Ctrl+G...", Style.parse("bold yellow")),
+                Segment("   ", dim),
+                Segment(self._shell_name, Style.parse("dim cyan")),
+                Segment("  ", dim),
+            ]
+        else:
+            right_segments = [
+                Segment("Ctrl+G → help", dim),
+                Segment("   ", dim),
+                Segment(self._shell_name, Style.parse("dim cyan")),
+                Segment("  ", dim),
+            ]
 
         left_len = sum(len(s.text) for s in left_segments)
         right_len = sum(len(s.text) for s in right_segments)
