@@ -95,7 +95,7 @@ def _ensure_config_dir(config_dir: Path) -> None:
             '# shell = "/bin/zsh"  # override default shell\n'
             "\n"
             "[provider]\n"
-            'kind = "anthropic"\n'
+            'kind = "anthropic"  # "anthropic" or "openai"\n'
             'model = "claude-sonnet-4-20250514"\n'
             "timeout_seconds = 10.0\n"
             "max_tokens = 1024\n"
@@ -155,11 +155,17 @@ def load_config(config_dir: Path | None = None) -> Config:
             if isinstance(ratio, list) and len(ratio) == 2:
                 config.split_ratio = (int(ratio[0]), int(ratio[1]))
 
-    # Resolve API key: .env takes priority, fall back to os.environ.
+    # Resolve API key based on provider kind.
+    # .env takes priority, fall back to os.environ.
     # The key stays in Config — never injected into os.environ (FINDING-02).
+    _KEY_MAP = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+    }
+    key_name = _KEY_MAP.get(config.provider.kind.lower(), "ANTHROPIC_API_KEY")
     config.api_key = (
-        env_vars.get("ANTHROPIC_API_KEY", "")
-        or os.environ.get("ANTHROPIC_API_KEY", "")
+        env_vars.get(key_name, "")
+        or os.environ.get(key_name, "")
         or ""
     )
 

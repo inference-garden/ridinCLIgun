@@ -166,3 +166,110 @@ def test_manager_properties():
     manager = ProviderManager(adapter, timeout=5.0)
     assert "Anthropic" in manager.provider_name
     assert manager.is_configured
+
+
+# ── OpenAI adapter tests ─────────────────────────────────────────
+
+from ridincligun.provider.openai import OpenAIAdapter, _parse_response as _openai_parse
+
+
+def test_openai_adapter_not_configured():
+    """OpenAI adapter without API key reports not configured."""
+    adapter = OpenAIAdapter(api_key="")
+    assert not adapter.is_configured
+
+
+def test_openai_adapter_configured():
+    """OpenAI adapter with API key reports configured."""
+    adapter = OpenAIAdapter(api_key="sk-test-key")
+    assert adapter.is_configured
+
+
+def test_openai_adapter_name():
+    """OpenAI adapter name includes provider and model."""
+    adapter = OpenAIAdapter(api_key="sk-test", model="gpt-4o")
+    assert "OpenAI" in adapter.name
+    assert "gpt-4o" in adapter.name
+
+
+def test_openai_adapter_default_model():
+    """OpenAI adapter uses gpt-4o-mini by default."""
+    adapter = OpenAIAdapter(api_key="sk-test")
+    assert "gpt-4o-mini" in adapter.name
+
+
+def test_openai_parse_response_full():
+    """OpenAI parser handles well-formed response."""
+    raw = (
+        "RISK: warning\n"
+        "SUMMARY: Deletes a directory.\n"
+        "EXPLANATION: Removes the target recursively.\n"
+        "SUGGESTION: Double-check the path first."
+    )
+    result = _openai_parse(raw)
+    assert result.risk_assessment == "warning"
+    assert "Deletes" in result.summary
+    assert "Double-check" in result.suggestion
+
+
+def test_openai_parse_response_malformed():
+    """OpenAI parser falls back to caution on malformed input."""
+    result = _openai_parse("garbage text")
+    assert result.risk_assessment == "caution"
+
+
+def test_openai_manager_unconfigured():
+    """Manager returns error for unconfigured OpenAI provider."""
+    adapter = OpenAIAdapter(api_key="")
+    manager = ProviderManager(adapter)
+    result = asyncio.run(manager.review("ls"))
+    assert not result.success
+    assert "key" in result.error_message.lower()
+
+
+# ── Provider factory tests ───────────────────────────────────────
+
+from ridincligun.config import Config, ProviderSettings
+from ridincligun.provider import create_provider
+
+
+def test_factory_creates_anthropic_by_default():
+    """Factory creates Anthropic provider by default."""
+    config = Config(
+        provider=ProviderSettings(kind="anthropic", model="claude-sonnet-4-20250514"),
+        api_key="sk-ant-test",
+    )
+    manager = create_provider(config)
+    assert "Anthropic" in manager.provider_name
+    assert manager.is_configured
+
+
+def test_factory_creates_openai():
+    """Factory creates OpenAI provider when configured."""
+    config = Config(
+        provider=ProviderSettings(kind="openai", model="gpt-4o"),
+        api_key="sk-test-key",
+    )
+    manager = create_provider(config)
+    assert "OpenAI" in manager.provider_name
+    assert manager.is_configured
+
+
+def test_factory_unknown_kind_falls_back_to_anthropic():
+    """Factory defaults to Anthropic for unknown provider kinds."""
+    config = Config(
+        provider=ProviderSettings(kind="unknown-provider"),
+        api_key="sk-test",
+    )
+    manager = create_provider(config)
+    assert "Anthropic" in manager.provider_name
+
+
+def test_factory_respects_timeout():
+    """Factory passes timeout from config to manager."""
+    config = Config(
+        provider=ProviderSettings(timeout_seconds=30.0),
+        api_key="sk-test",
+    )
+    manager = create_provider(config)
+    assert manager._timeout == 30.0

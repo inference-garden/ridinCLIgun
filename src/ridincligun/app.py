@@ -16,9 +16,8 @@ from textual.css.query import NoMatches
 from ridincligun.advisory.engine import AdvisoryEngine
 from ridincligun.advisory.models import RiskLevel
 from ridincligun.config import Config, load_config, save_split_ratio
-from ridincligun.provider.anthropic import AnthropicAdapter
+from ridincligun.provider import create_provider
 from ridincligun.provider.base import AIReviewResponse
-from ridincligun.provider.manager import ProviderManager
 from ridincligun.shell.input_parser import extract_current_command
 from ridincligun.shortcuts.bindings import LeaderAction, LeaderState
 from ridincligun.state import AppState, Phase
@@ -77,14 +76,8 @@ class RidinCLIgunApp(App):
         self._leader = LeaderState()
         self._help_showing = False
         self._engine = AdvisoryEngine()
-        # AI provider — key passed explicitly from config, not from os.environ (FINDING-02)
-        adapter = AnthropicAdapter(
-            api_key=self.config.api_key,
-            model=self.config.provider.model,
-        )
-        self._provider = ProviderManager(
-            adapter, timeout=self.config.provider.timeout_seconds
-        )
+        # AI provider — created via factory from config (supports anthropic, openai)
+        self._provider = create_provider(self.config)
         self._review_task: asyncio.Task | None = None
         self._ai_review_showing = False  # True while an AI review is displayed
 
