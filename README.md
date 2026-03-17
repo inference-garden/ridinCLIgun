@@ -1,81 +1,104 @@
 # ridinCLIgun
 
-A terminal companion that advises but never acts.
+> Your terminal copilot that watches, warns, but never touches the wheel.
 
-## What is it?
+```
+ ┌─ Shell ─────────────────────────┐┌─ Advisory ──────────────┐
+ │ $ rm -rf ~/Documents            ││ ⚠ DANGER               │
+ │                                 ││ Recursive forced delete │
+ │                                 ││ targeting home folder.  │
+ │                                 ││                         │
+ │                                 ││ This will permanently   │
+ │                                 ││ destroy your files.     │
+ └─────────────────────────────────┘└─────────────────────────┘
+```
 
-ridinCLIgun is a split-pane terminal app: a real shell on the left, an advisory assistant on the right. It warns you about dangerous commands, offers AI-powered reviews, and helps you work in the terminal more safely — without ever taking control away from you.
+ridinCLIgun splits your terminal in two: a **real shell** on the left, an **advisory pane** on the right. Type anything — it watches in real time and warns you before you hit Enter on something you'll regret.
 
-**Key principle: the advisor never executes anything. You stay in charge.**
+Add an AI backend and it becomes a second pair of eyes: reviewing pipelines, explaining flags, catching mistakes — all without ever running a single command for you.
 
-## Status
+**You drive. It rides shotgun.**
 
-v0.2 — Early release. macOS only. Python 3.12+.
+## What it does
 
-## Features
+- **Instant local warnings** — offline regex catalog catches dangerous patterns before you hit Enter
+- **AI command review** — ask Claude to review what you're about to run (opt-in, explicit trigger)
+- **Real shell** — not a wrapper, not a sandbox. Full PTY with colors, tab completion, history
+- **Secret mode** — one toggle to block anything from reaching the AI
+- **Draggable split pane** — resize with mouse or keyboard
+- **Copy/paste** — mouse-select text in either pane, clipboard integration
 
-- Real PTY shell with full color, tab completion, and history
-- Local command warnings (offline, instant) from a built-in catalog
-- AI command review via Anthropic Claude (opt-in, explicit trigger)
-- Secret mode — blocks any command from being sent to AI
-- Resizable split-pane layout (60/40 default)
-- Mouse text selection + clipboard copy from both panes
-- Ctrl+G leader key for all app shortcuts
+
+### Why this exists
+
+ridinCLIgun is a first coding project, born from curiosity after many years far away from code. It's entirely vibe-coded with AI assistance — and that's the point: 
+For now, this is a personal project for me to learn how things work and change in the new AI-driven world and to creatively bring my ideas to life. 
+I also see the terminal as essential for learning the basics of working with LLMs and multi-agent systems—especially using OpenClaw as an example—so I can really dive into the subject. I think that communicating with the computer via the terminal is a barrier for many people who aren’t that tech-savvy but are curious. 
+I want to reach those people with this product.
+
+So:
+The terminal is where the real learning happens: LLMs, multi-agent systems, tools like Claude Code — they all live here. But the command line is also where most people stop. It may feel hostile, unforgiving, one wrong keystroke away from disaster :-)
+
+This project exists because I believe the terminal shouldn't be a gatekeeper. If you're curious enough to open one, you deserve a companion that helps you learn safely — not a tool that takes over.
+
+
+## New to the terminal?
+
+The command line is powerful — but unforgiving. There's no "undo" for most things, and a typo in the wrong place renders a command useless, can wipe files or break your system. That's exactly why ridinCLIgun exists.
+
+Think of it as training wheels that never get in your way. Type commands like you normally would — if something looks risky, the advisory pane lights up and tells you *why* before you run it. With AI review enabled, you can ask "is this safe?" in plain English.
+
+You'll learn faster because you see the consequences *before* they happen, not after.
 
 ## Quick start
 
 ```bash
-# Clone and install
-git clone <repo-url>
+git clone git@github.com:inference-garden/ridinCLIgun.git
 cd ridinCLIgun
 pip install -e ".[all]"
-
-# Run
 python -m ridincligun
 ```
 
-### Optional: AI review
-
-To use AI-powered command review, add your API key:
+### Want AI review?
 
 ```bash
-echo "ANTHROPIC_API_KEY=sk-ant-your-key-here" >> ~/.config/ridincligun/.env
+echo "ANTHROPIC_API_KEY=your-key" >> ~/.config/ridincligun/.env
 ```
 
-Then toggle AI on inside the app with `Ctrl+G, A`.
+Then `Ctrl+G, A` inside the app to switch it on.
 
 ## Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Q` | Quit |
-| `F6` / `F7` | Move divider left / right |
-| `Ctrl+G, R` | AI review current command |
+Everything goes through `Ctrl+G` as a leader key (vim-style, no timeout):
+
+| Key | What it does |
+|-----|-------------|
+| `Ctrl+G, R` | Ask AI to review current command |
 | `Ctrl+G, A` | Toggle AI on/off |
 | `Ctrl+G, S` | Toggle Secret mode |
 | `Ctrl+G, C` | Copy selected text |
-| `Ctrl+G, V` | Paste from clipboard |
+| `Ctrl+G, V` | Paste |
 | `Ctrl+G, X` | Restart shell |
-| `Ctrl+G, D` | Debug info |
 | `Ctrl+G, H` | Show all shortcuts |
+| `F6` / `F7` | Resize panes |
+| `Ctrl+Q` | Quit |
 
-## Configuration
+## Status
 
-Config lives in `~/.config/ridincligun/`:
+**v0.2** — early release, macOS only, Python 3.12+. Works, has rough edges.
 
-- `config.toml` — UI and provider settings
-- `.env` — API keys (never committed)
+## Config
+
+`~/.config/ridincligun/` — auto-created on first run:
+
+- `config.toml` — UI preferences, provider settings
+- `.env` — API keys (gitignored, stays local)
 
 ## Development
 
 ```bash
-# Install with dev deps
 pip install -e ".[dev]"
-
-# Run tests
 pytest tests/ -v
-
-# Lint
 ruff check src/
 ```
 
