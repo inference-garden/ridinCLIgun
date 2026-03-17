@@ -29,6 +29,7 @@ Thumbs.db
 # Private docs (working notes, not for repo)
 private_docs/
 
+
 # Logs
 *.log
 logs/

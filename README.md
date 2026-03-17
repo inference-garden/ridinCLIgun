@@ -1,3 +1,6 @@
+**"Riding Shotgun" for your CLI** - a split-terminal TUI with an AI companion.
+
+
 # ridinCLIgun
 
 > Your terminal copilot that watches, warns, but never touches the wheel.
