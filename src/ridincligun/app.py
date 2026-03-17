@@ -15,7 +15,7 @@ from textual.css.query import NoMatches
 
 from ridincligun.advisory.engine import AdvisoryEngine
 from ridincligun.advisory.models import RiskLevel
-from ridincligun.config import Config, load_config
+from ridincligun.config import Config, load_config, save_split_ratio
 from ridincligun.provider.anthropic import AnthropicAdapter
 from ridincligun.provider.base import AIReviewResponse
 from ridincligun.provider.manager import ProviderManager
@@ -90,7 +90,7 @@ class RidinCLIgunApp(App):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-container"):
-            yield ShellPane(id="shell-pane")
+            yield ShellPane(shell=self.config.shell or None, id="shell-pane")
             yield PaneDivider(id="pane-divider")
             yield AdvisoryPane(id="advisory-pane")
         yield StatusBar(id="status-bar")
@@ -613,7 +613,10 @@ class RidinCLIgunApp(App):
     # ── Quit ──────────────────────────────────────────────────────
 
     def action_quit(self) -> None:
-        """Quit the application."""
+        """Quit the application. Persists split ratio to config.toml."""
+        # Save split ratio if it changed from the config default
+        if self.state.split_ratio != self.config.split_ratio:
+            save_split_ratio(self.config, self.state.split_ratio)
         try:
             shell = self.query_one("#shell-pane", ShellPane)
             shell.pty_process.stop()

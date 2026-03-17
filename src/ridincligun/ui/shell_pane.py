@@ -81,9 +81,9 @@ class ShellPane(Widget, can_focus=True):
         """Posted on every key press that the shell handles. Used for help dismissal."""
         pass
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, shell: str | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._pty = PtyProcess()
+        self._pty = PtyProcess(shell=shell or None)
         self._screen = pyte.Screen(80, 24)
         self._stream = pyte.Stream(self._screen)
         self._read_task: asyncio.Task | None = None

@@ -46,6 +46,9 @@ class Config:
     # API key — held in memory, never injected into os.environ (FINDING-02)
     api_key: str = ""
 
+    # Shell settings
+    shell: str = ""  # empty = use $SHELL or /bin/zsh
+
     # UI settings
     split_ratio: tuple[int, int] = (3, 2)  # shell:advisory as fr units
 
@@ -89,6 +92,7 @@ def _ensure_config_dir(config_dir: Path) -> None:
             "\n"
             "[general]\n"
             "ai_enabled_default = false\n"
+            '# shell = "/bin/zsh"  # override default shell\n'
             "\n"
             "[provider]\n"
             'kind = "anthropic"\n'
@@ -106,7 +110,7 @@ def load_config(config_dir: Path | None = None) -> Config:
     """Load configuration from disk.
 
     Creates default config files if they don't exist.
-    Loads .env for API secrets into os.environ.
+    Reads .env for API secrets into Config (not os.environ).
     """
     config_dir = config_dir or _default_config_dir()
     _ensure_config_dir(config_dir)
@@ -129,6 +133,8 @@ def load_config(config_dir: Path | None = None) -> Config:
         general = data.get("general", {})
         if "ai_enabled_default" in general:
             config.ai_enabled_default = bool(general["ai_enabled_default"])
+        if "shell" in general:
+            config.shell = str(general["shell"])
 
         # Provider settings
         provider_data = data.get("provider", {})
@@ -158,3 +164,37 @@ def load_config(config_dir: Path | None = None) -> Config:
     )
 
     return config
+
+
+def save_split_ratio(config: Config, ratio: tuple[int, int]) -> None:
+    """Persist the split ratio to config.toml.
+
+    Rewrites the [ui] split_ratio value while preserving the rest of the file.
+    Fails silently on I/O errors — this is a convenience feature, not critical.
+    """
+    import re as _re
+
+    config_file = config.config_file
+    if not config_file.exists():
+        return
+
+    try:
+        text = config_file.read_text()
+        new_value = f"split_ratio = [{ratio[0]}, {ratio[1]}]"
+
+        if _re.search(r"^split_ratio\s*=", text, _re.MULTILINE):
+            text = _re.sub(
+                r"^split_ratio\s*=\s*\[.*?\]",
+                new_value,
+                text,
+                count=1,
+                flags=_re.MULTILINE,
+            )
+        elif "[ui]" in text:
+            text = text.replace("[ui]", f"[ui]\n{new_value}", 1)
+        else:
+            text += f"\n[ui]\n{new_value}\n"
+
+        config_file.write_text(text)
+    except OSError:
+        pass  # Non-critical — ratio resets to default next launch
