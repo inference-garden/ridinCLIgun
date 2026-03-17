@@ -34,6 +34,7 @@ class AdvisoryPane(Widget, can_focus=True):
         super().__init__(**kwargs)
         self._raw_lines: list[tuple[str, str]] = []  # (text, style_str) — source of truth
         self._wrapped_lines: list[tuple[str, str]] = []  # recomputed on resize
+        self._scroll_offset: int = 0  # lines scrolled from top
         # Text selection state
         self._sel_start: tuple[int, int] | None = None
         self._sel_end: tuple[int, int] | None = None
@@ -57,6 +58,7 @@ class AdvisoryPane(Widget, can_focus=True):
         """Replace the advisory content. Each item is (text, style_string)."""
         self._raw_lines = lines
         self._rewrap()
+        self._scroll_offset = 0
         self.clear_selection()
         self.refresh()
 
@@ -91,8 +93,9 @@ class AdvisoryPane(Widget, can_focus=True):
     def on_mouse_down(self, event: events.MouseDown) -> None:
         """Start text selection on mouse down."""
         if event.button == 1:
-            self._sel_start = (event.y, event.x)
-            self._sel_end = (event.y, event.x)
+            content_y = event.y + self._scroll_offset
+            self._sel_start = (content_y, event.x)
+            self._sel_end = (content_y, event.x)
             self._selecting = True
             self.capture_mouse()
             self.refresh()
@@ -100,17 +103,32 @@ class AdvisoryPane(Widget, can_focus=True):
     def on_mouse_move(self, event: events.MouseMove) -> None:
         """Extend selection while dragging."""
         if self._selecting:
-            self._sel_end = (event.y, event.x)
+            content_y = event.y + self._scroll_offset
+            self._sel_end = (content_y, event.x)
             self.refresh()
 
     def on_mouse_up(self, event: events.MouseUp) -> None:
         """End selection on mouse release."""
         if self._selecting and event.button == 1:
-            self._sel_end = (event.y, event.x)
+            content_y = event.y + self._scroll_offset
+            self._sel_end = (content_y, event.x)
             self._selecting = False
             self.release_mouse()
             if self._sel_start == self._sel_end:
                 self.clear_selection()
+            self.refresh()
+
+    def on_mouse_scroll_up(self, _event: events.MouseScrollUp) -> None:
+        """Scroll advisory content up (show earlier lines)."""
+        if self._scroll_offset > 0:
+            self._scroll_offset = max(0, self._scroll_offset - 3)
+            self.refresh()
+
+    def on_mouse_scroll_down(self, _event: events.MouseScrollDown) -> None:
+        """Scroll advisory content down (show later lines)."""
+        max_offset = max(0, len(self._wrapped_lines) - self.size.height)
+        if self._scroll_offset < max_offset:
+            self._scroll_offset = min(max_offset, self._scroll_offset + 3)
             self.refresh()
 
     def clear_selection(self) -> None:
@@ -172,12 +190,13 @@ class AdvisoryPane(Widget, can_focus=True):
     # ── Rendering ─────────────────────────────────────────────────
 
     def render_line(self, y: int) -> Strip:
-        """Render a single line of advisory content."""
+        """Render a single line of advisory content with scroll offset."""
         width = self.size.width
         has_sel = self.has_selection()
+        line_idx = y + self._scroll_offset
 
-        if y < len(self._wrapped_lines):
-            text, style_str = self._wrapped_lines[y]
+        if line_idx < len(self._wrapped_lines):
+            text, style_str = self._wrapped_lines[line_idx]
             base_style = Style.parse(style_str) if style_str else Style()
             padded = text.ljust(width)[:width]
 
@@ -188,7 +207,7 @@ class AdvisoryPane(Widget, can_focus=True):
                 current_style: Style | None = None
 
                 for x, ch in enumerate(padded):
-                    style = _SEL_STYLE if self._is_selected(y, x) else base_style
+                    style = _SEL_STYLE if self._is_selected(line_idx, x) else base_style
                     if style == current_style:
                         current_text += ch
                     else:

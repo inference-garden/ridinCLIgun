@@ -144,6 +144,150 @@
           "suggestion": "Use a .env file or secrets manager instead. Prefix with a space to avoid history (if HISTCONTROL=ignorespace)."
         }
       ]
+    },
+    {
+      "id": "mkfs",
+      "name": "Filesystem formatting",
+      "patterns": [
+        {
+          "regex": "mkfs\\.|mkswap\\s",
+          "risk": "danger",
+          "summary": "Creating a filesystem destroys all data on the target partition.",
+          "suggestion": "Verify the target device with 'lsblk' before running. This is irreversible."
+        }
+      ]
+    },
+    {
+      "id": "fork_bomb",
+      "name": "Fork bombs and resource exhaustion",
+      "patterns": [
+        {
+          "regex": ":\\(\\)\\s*\\{",
+          "risk": "danger",
+          "summary": "Fork bomb — spawns processes until the system is unresponsive.",
+          "suggestion": "This will crash your system. If run accidentally, use 'killall' from another terminal."
+        }
+      ]
+    },
+    {
+      "id": "disk_overwrite",
+      "name": "Disk overwrite patterns",
+      "patterns": [
+        {
+          "regex": "shred\\s",
+          "risk": "warning",
+          "summary": "Securely overwrites files — data is unrecoverable after shred.",
+          "suggestion": "Verify the target. Unlike 'rm', shred data cannot be recovered."
+        },
+        {
+          "regex": "wipefs\\s",
+          "risk": "danger",
+          "summary": "Wipes filesystem signatures from a device.",
+          "suggestion": "Verify the device with 'lsblk'. This makes partitions unrecognizable."
+        }
+      ]
+    },
+    {
+      "id": "ssh_and_keys",
+      "name": "SSH and key operations",
+      "patterns": [
+        {
+          "regex": "ssh-keygen\\s+.*-y|-f\\s+~/.ssh/",
+          "risk": "caution",
+          "summary": "Operating on SSH keys — may expose or overwrite key material.",
+          "suggestion": "Back up your keys before modifying. Never share private keys."
+        },
+        {
+          "regex": "scp\\s|rsync\\s+.*-e\\s+ssh",
+          "risk": "caution",
+          "summary": "Transferring files over SSH — verify destination and direction.",
+          "suggestion": "Double-check source and destination to avoid overwriting remote files."
+        }
+      ]
+    },
+    {
+      "id": "iptables_firewall",
+      "name": "Firewall and network rules",
+      "patterns": [
+        {
+          "regex": "iptables\\s|nftables\\s|ufw\\s+(disable|reset|delete)",
+          "risk": "warning",
+          "summary": "Modifying firewall rules — may lock you out or expose services.",
+          "suggestion": "Test rules with a timeout: 'iptables -A ... && sleep 60 && iptables -D ...'"
+        }
+      ]
+    },
+    {
+      "id": "package_managers",
+      "name": "Package manager operations",
+      "patterns": [
+        {
+          "regex": "pip\\s+install\\s+--break-system-packages|sudo\\s+pip\\s+install",
+          "risk": "warning",
+          "summary": "Installing Python packages system-wide can break OS dependencies.",
+          "suggestion": "Use a virtual environment: 'python -m venv .venv && source .venv/bin/activate'"
+        },
+        {
+          "regex": "brew\\s+update\\s*&&\\s*brew\\s+upgrade",
+          "risk": "caution",
+          "summary": "Upgrading all Homebrew packages at once — may introduce breaking changes.",
+          "suggestion": "Upgrade specific packages: 'brew upgrade <package>'"
+        }
+      ]
+    },
+    {
+      "id": "system_files",
+      "name": "System file modification",
+      "patterns": [
+        {
+          "regex": ">(\\s*)/etc/|tee\\s+/etc/",
+          "risk": "danger",
+          "summary": "Writing to system configuration files — may break your system.",
+          "suggestion": "Always back up before modifying: 'sudo cp /etc/file /etc/file.bak'"
+        },
+        {
+          "regex": "visudo|passwd\\s",
+          "risk": "warning",
+          "summary": "Modifying authentication or sudo configuration.",
+          "suggestion": "Use 'visudo' (not a direct editor) to avoid locking yourself out."
+        }
+      ]
+    },
+    {
+      "id": "docker",
+      "name": "Container operations",
+      "patterns": [
+        {
+          "regex": "docker\\s+system\\s+prune\\s+-a|docker\\s+volume\\s+prune",
+          "risk": "warning",
+          "summary": "Removes all unused Docker resources — may delete data volumes.",
+          "suggestion": "Run without '-a' first, or 'docker system df' to see what would be removed."
+        },
+        {
+          "regex": "docker\\s+run\\s+.*--privileged",
+          "risk": "warning",
+          "summary": "Running container in privileged mode — full host access.",
+          "suggestion": "Avoid --privileged unless strictly necessary. Use --cap-add for specific capabilities."
+        }
+      ]
+    },
+    {
+      "id": "history_sensitive",
+      "name": "History and credential files",
+      "patterns": [
+        {
+          "regex": "cat\\s+.*(\\.bash_history|\\.zsh_history|\\.histfile|\\.mysql_history|\\.psql_history)",
+          "risk": "caution",
+          "summary": "Reading shell history — may contain passwords and sensitive commands.",
+          "suggestion": "Grep for specific entries instead of dumping the entire history."
+        },
+        {
+          "regex": "cat\\s+.*(\\.(ssh|aws|gnupg)/|/etc/shadow|\\.netrc|\\.pgpass)",
+          "risk": "warning",
+          "summary": "Reading sensitive credential or key files.",
+          "suggestion": "Be careful with output — don't pipe to logs or paste into chats."
+        }
+      ]
     }
   ]
 }
