@@ -26,9 +26,6 @@ Thumbs.db
 # Secrets
 .env
 
-# Private docs (working notes, not for repo)
-private_docs/
-
 
 # Logs
 *.log

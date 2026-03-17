@@ -184,6 +184,10 @@ class RidinCLIgunApp(App):
             case LeaderAction.TOGGLE_SECRET:
                 self.state.secret_mode = not self.state.secret_mode
                 label = "on" if self.state.secret_mode else "off"
+                # Cancel any in-flight AI review when entering secret mode
+                if self.state.secret_mode and self._review_task and not self._review_task.done():
+                    self._review_task.cancel()
+                    self._review_task = None
                 self._show_advisory_notice(f"Secret mode: {label}")
                 self._sync_status_bar()
 
@@ -262,6 +266,13 @@ class RidinCLIgunApp(App):
     async def _do_ai_review(self, command: str) -> None:
         """Perform the AI review asynchronously."""
         result = await self._provider.review(command)
+
+        # Defense in depth: suppress result if secret mode was enabled
+        # after the request was sent (race condition guard)
+        if self.state.secret_mode:
+            self.state.phase = Phase.TYPING
+            return
+
         self.state.phase = Phase.REVIEW_READY
 
         if result.success and result.response:
@@ -346,19 +357,9 @@ class RidinCLIgunApp(App):
                 source = "selection"
                 shell.clear_selection()
             else:
-                # Fallback: copy full shell screen
-                lines = []
-                for y in range(shell._screen.lines):
-                    row = shell._screen.buffer[y]
-                    line = "".join(
-                        row[x].data if row[x].data else " "
-                        for x in range(shell._screen.columns)
-                    ).rstrip()
-                    lines.append(line)
-                while lines and not lines[-1]:
-                    lines.pop()
-                text = "\n".join(lines)
-                source = f"{len(lines)} lines"
+                # No selection — inform user instead of copying entire screen
+                self._show_advisory_notice("Nothing selected to copy.")
+                return
             if text:
                 subprocess.run(
                     ["pbcopy"],
