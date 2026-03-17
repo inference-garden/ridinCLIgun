@@ -38,6 +38,7 @@ SUGGESTION: <safer alternative, or "None" if appropriate>
 # before sending. The system prompt tells the model to treat them as real.
 
 _SANITIZE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # ── Destructive filesystem commands ───────────────────────────
     # Full destructive commands: rm -rf /, rm -rf /* etc.
     (re.compile(r"rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?/(\*|\s|$)"), "rm [FLAGS] [TARGET]"),
     # Device paths: /dev/sda, /dev/disk0, /dev/zero etc.
@@ -52,13 +53,34 @@ _SANITIZE_PATTERNS: list[tuple[re.Pattern, str]] = [
     # Root-destructive paths: /* or standalone /
     (re.compile(r"(?<!\w)/\*"), "[TARGET]"),
     (re.compile(r"\s/\s"), " [TARGET] "),
+
+    # ── Code execution via pipe ───────────────────────────────────
     # Pipe-to-shell patterns: curl ... | bash, wget ... | sh
     (re.compile(r"\|\s*(bash|sh|zsh|dash)\b"), "| [PIPE_TARGET]"),
     # Fork bomb patterns
     (re.compile(r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;?\s*:"), "[PATTERN]"),
-    # Overwrite system files
+
+    # ── System file overwrites ────────────────────────────────────
     (re.compile(r">\s*/etc/\S+"), "> [SYSTEM_FILE]"),
     (re.compile(r">\s*/boot/\S+"), "> [SYSTEM_FILE]"),
+
+    # ── Sensitive file access ─────────────────────────────────────
+    # SSH keys, credentials, shadow, shell history
+    (re.compile(r"~?/\.ssh/\S+"), "[SENSITIVE_FILE]"),
+    (re.compile(r"~?/\.aws/\S+"), "[SENSITIVE_FILE]"),
+    (re.compile(r"~?/\.gnupg/\S+"), "[SENSITIVE_FILE]"),
+    (re.compile(r"/etc/shadow\b"), "[SENSITIVE_FILE]"),
+    (re.compile(r"/etc/gshadow\b"), "[SENSITIVE_FILE]"),
+    (re.compile(r"~?/\.\w*hist\w*\b"), "[SENSITIVE_FILE]"),
+    (re.compile(r"~?/\.netrc\b"), "[SENSITIVE_FILE]"),
+    (re.compile(r"~?/\.pgpass\b"), "[SENSITIVE_FILE]"),
+
+    # ── Inline secrets in commands ────────────────────────────────
+    # export SECRET_KEY=value, export API_KEY=value etc.
+    (re.compile(
+        r"(export\s+\w*(SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH)\w*=)\S+",
+        re.IGNORECASE,
+    ), r"\1[REDACTED]"),
 ]
 
 
@@ -67,6 +89,13 @@ def _sanitize_command(command: str) -> str:
 
     This prevents the API content filter from blocking responses about
     dangerous commands. The AI is instructed to treat placeholders as real.
+
+    KNOWN LIMITS (best-effort, not a privacy guarantee):
+    - Only covers patterns in _SANITIZE_PATTERNS; novel attack vectors pass through.
+    - Does not parse shell syntax — aliases, variables, backticks, $() can bypass.
+    - Does not redact arbitrary user data (filenames, hostnames, URLs).
+    - Python/perl/ruby one-liners with embedded shell commands are not caught.
+    - The full command verb and structure are always sent to the API.
     """
     result = command
     for pattern, replacement in _SANITIZE_PATTERNS:

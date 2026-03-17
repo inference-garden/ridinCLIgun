@@ -48,6 +48,37 @@ def test_sanitize_dangerous_commands(cmd, expected_placeholder):
     assert expected_placeholder in sanitized
 
 
+@pytest.mark.parametrize("cmd, expected_placeholder", [
+    ("cat ~/.ssh/id_rsa", "[SENSITIVE_FILE]"),
+    ("cat ~/.ssh/id_ed25519", "[SENSITIVE_FILE]"),
+    ("cat ~/.aws/credentials", "[SENSITIVE_FILE]"),
+    ("cat /etc/shadow", "[SENSITIVE_FILE]"),
+    ("cat ~/.bash_history", "[SENSITIVE_FILE]"),
+    ("cat ~/.zsh_history", "[SENSITIVE_FILE]"),
+    ("cat ~/.netrc", "[SENSITIVE_FILE]"),
+    ("cat ~/.pgpass", "[SENSITIVE_FILE]"),
+    ("cat ~/.gnupg/secring.gpg", "[SENSITIVE_FILE]"),
+])
+def test_sanitize_sensitive_files(cmd, expected_placeholder):
+    """Sensitive file paths are replaced with placeholders."""
+    sanitized = _sanitize_command(cmd)
+    assert expected_placeholder in sanitized
+
+
+@pytest.mark.parametrize("cmd", [
+    "export AWS_SECRET_ACCESS_KEY=AKIA1234567890ABCDEF",
+    "export ANTHROPIC_API_KEY=sk-ant-api03-abc123",
+    "export GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx",
+    "export DB_PASSWORD=hunter2",
+])
+def test_sanitize_inline_secrets(cmd):
+    """Exported secret values are redacted before sending to API."""
+    sanitized = _sanitize_command(cmd)
+    assert "[REDACTED]" in sanitized
+    # The variable name is kept (so AI can classify the command)
+    assert "export" in sanitized
+
+
 def test_sanitize_safe_command_unchanged():
     """Safe commands pass through unchanged."""
     cmd = "ls -la /home/user"
