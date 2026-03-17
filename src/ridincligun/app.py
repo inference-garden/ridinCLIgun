@@ -77,8 +77,11 @@ class RidinCLIgunApp(App):
         self._leader = LeaderState()
         self._help_showing = False
         self._engine = AdvisoryEngine()
-        # AI provider — reads API key from os.environ (loaded by config from .env)
-        adapter = AnthropicAdapter(model=self.config.provider.model)
+        # AI provider — key passed explicitly from config, not from os.environ (FINDING-02)
+        adapter = AnthropicAdapter(
+            api_key=self.config.api_key,
+            model=self.config.provider.model,
+        )
         self._provider = ProviderManager(
             adapter, timeout=self.config.provider.timeout_seconds
         )

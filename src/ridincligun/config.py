@@ -2,15 +2,19 @@
 
 Reads config.toml from ~/.config/ridincligun/ and .env for API secrets.
 Creates default config directory and files if they don't exist.
+API keys are read into the Config object and passed explicitly
+to the provider adapter — never injected into os.environ (FINDING-02).
 """
 
 from __future__ import annotations
 
+import os
+import stat
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 
 def _default_config_dir() -> Path:
@@ -38,6 +42,9 @@ class Config:
     # AI settings
     ai_enabled_default: bool = False
     provider: ProviderSettings = field(default_factory=ProviderSettings)
+
+    # API key — held in memory, never injected into os.environ (FINDING-02)
+    api_key: str = ""
 
     # UI settings
     split_ratio: tuple[int, int] = (3, 2)  # shell:advisory as fr units
@@ -67,6 +74,13 @@ def _ensure_config_dir(config_dir: Path) -> None:
             "# OPENAI_API_KEY=\n"
             "# MISTRAL_API_KEY=\n"
         )
+        # SECURITY: Restrict .env to owner-only read/write (AMENDMENT-01)
+        env_file.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
+    else:
+        # Harden permissions on existing .env files too
+        current_mode = env_file.stat().st_mode
+        if current_mode & (stat.S_IRGRP | stat.S_IROTH):
+            env_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
     config_file = config_dir / "config.toml"
     if not config_file.exists():
@@ -97,10 +111,11 @@ def load_config(config_dir: Path | None = None) -> Config:
     config_dir = config_dir or _default_config_dir()
     _ensure_config_dir(config_dir)
 
-    # Load .env into environment
+    # Load .env into a dict — NOT into os.environ (FINDING-02)
     env_file = config_dir / ".env"
+    env_vars: dict[str, str | None] = {}
     if env_file.exists():
-        load_dotenv(env_file)
+        env_vars = dotenv_values(env_file)
 
     # Load config.toml
     config = Config(config_dir=config_dir)
@@ -133,5 +148,13 @@ def load_config(config_dir: Path | None = None) -> Config:
             ratio = ui_data["split_ratio"]
             if isinstance(ratio, list) and len(ratio) == 2:
                 config.split_ratio = (int(ratio[0]), int(ratio[1]))
+
+    # Resolve API key: .env takes priority, fall back to os.environ.
+    # The key stays in Config — never injected into os.environ (FINDING-02).
+    config.api_key = (
+        env_vars.get("ANTHROPIC_API_KEY", "")
+        or os.environ.get("ANTHROPIC_API_KEY", "")
+        or ""
+    )
 
     return config

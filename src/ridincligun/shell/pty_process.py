@@ -58,8 +58,13 @@ class PtyProcess:
         # Fork the child process
         env = os.environ.copy()
         env["TERM"] = "xterm-256color"
-        # Simplify prompt detection by hinting at a known prompt
-        # (user's shell config may override this, which is fine)
+
+        # SECURITY: Strip provider API keys from the shell environment.
+        # The embedded shell and its children (plugins, prompts, subprocesses)
+        # do not need these credentials. See FINDING-02 in security audit.
+        for key in list(env):
+            if key.endswith("_API_KEY") or key.endswith("_SECRET_KEY"):
+                del env[key]
 
         self._child_pid = subprocess.Popen(
             [self._shell, "-l"],  # login shell
