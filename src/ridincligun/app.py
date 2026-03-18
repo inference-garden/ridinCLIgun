@@ -15,6 +15,7 @@ from textual.css.query import NoMatches
 
 from ridincligun.advisory.engine import AdvisoryEngine
 from ridincligun.advisory.models import RiskLevel
+from ridincligun.advisory.secret_detector import detect_secrets
 from ridincligun.config import Config, load_config, save_split_ratio
 from ridincligun.provider import create_provider
 from ridincligun.provider.base import AIReviewResponse
@@ -80,6 +81,7 @@ class RidinCLIgunApp(App):
         self._provider = create_provider(self.config)
         self._review_task: asyncio.Task | None = None
         self._ai_review_showing = False  # True while an AI review is displayed
+        self._last_ai_failed = False  # True if the most recent AI call failed
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-container"):
@@ -136,7 +138,17 @@ class RidinCLIgunApp(App):
         if not command:
             # Command empty → clear everything (including AI review)
             self._ai_review_showing = False
+            self.state.secrets_detected = False
             self._show_advisory_welcome()
+            return
+
+        # ── Secret detection (runs on every keystroke) ─────────────
+        secret_result = detect_secrets(command)
+        self.state.secrets_detected = secret_result.has_secrets
+
+        if secret_result.has_secrets:
+            self._ai_review_showing = False
+            self._show_secret_warning(secret_result)
             return
 
         # AI review showing + command still has content → keep review visible
@@ -170,8 +182,24 @@ class RidinCLIgunApp(App):
         match action:
             case LeaderAction.TOGGLE_AI:
                 self.state.ai_enabled = not self.state.ai_enabled
-                label = "on" if self.state.ai_enabled else "off"
-                self._show_advisory_notice(f"AI review: {label}")
+                if self.state.ai_enabled and not self._provider.is_configured:
+                    self._update_ai_status("offline")
+                    self._show_advisory_notice(
+                        "AI review: on\n\n"
+                        "⚠ No API key configured.\n"
+                        "Add it to ~/.config/ridincligun/.env\n"
+                        "and restart."
+                    )
+                elif self.state.ai_enabled:
+                    self._show_advisory_notice(
+                        "AI review: on\n\n"
+                        "Checking connection..."
+                    )
+                    # Validate provider in background — updates status on result
+                    asyncio.create_task(self._validate_provider())
+                else:
+                    self._update_ai_status("")
+                    self._show_advisory_notice("AI review: off")
                 self._sync_status_bar()
 
             case LeaderAction.TOGGLE_SECRET:
@@ -205,6 +233,38 @@ class RidinCLIgunApp(App):
             case LeaderAction.PASTE:
                 self._do_paste()
 
+    # ── Secret warning ─────────────────────────────────────────────
+
+    def _show_secret_warning(self, result) -> None:
+        """Display a secret detection warning in the advisory pane."""
+        from ridincligun.advisory.secret_detector import SecretDetectionResult
+
+        if not isinstance(result, SecretDetectionResult) or not result.matches:
+            return
+
+        lines: list[tuple[str, str]] = [
+            ("", ""),
+            ("  🔒 Secrets Detected", "bold red"),
+            ("", ""),
+            ("  AI review auto-blocked.", "bold yellow"),
+            ("", ""),
+        ]
+
+        for match in result.matches:
+            lines.append((f"  ⚠ {match.description}", "red"))
+
+        lines.append(("", ""))
+        lines.append(("  Secrets should not be sent to AI.", "dim"))
+        lines.append(("  Remove secrets before requesting", "dim"))
+        lines.append(("  AI review.", "dim"))
+        lines.append(("", ""))
+
+        try:
+            advisory = self.query_one("#advisory-pane", AdvisoryPane)
+            advisory.set_content(lines)
+        except NoMatches:
+            pass
+
     # ── AI Review ────────────────────────────────────────────────
 
     def _trigger_ai_review(self) -> None:
@@ -220,6 +280,14 @@ class RidinCLIgunApp(App):
             self._show_advisory_notice(
                 "Secret mode is on — command not sent.\n"
                 "Toggle with Ctrl+G, S."
+            )
+            return
+
+        if self.state.secrets_detected:
+            self._show_advisory_notice(
+                "🔒 Secrets detected in command.\n\n"
+                "AI review blocked to protect credentials.\n"
+                "Remove secrets from the command first."
             )
             return
 
@@ -246,8 +314,9 @@ class RidinCLIgunApp(App):
         if self._review_task and not self._review_task.done():
             self._review_task.cancel()
 
-        # Show loading state
+        # Show loading state and clear any previous error status
         self.state.phase = Phase.REVIEW_LOADING
+        self._update_ai_status("")
         self._show_advisory_notice(
             f"🔍 Reviewing: {command}\n\n"
             f"Asking {self._provider.provider_name}..."
@@ -269,9 +338,33 @@ class RidinCLIgunApp(App):
         self.state.phase = Phase.REVIEW_READY
 
         if result.success and result.response:
+            self._last_ai_failed = False
+            self._update_ai_status("")
             self._show_ai_review(command, result.response)
         else:
-            self._show_advisory_notice(f"⚠️ Review failed\n\n{result.error_message}")
+            self._last_ai_failed = True
+            self._update_ai_status("offline")
+            self._show_connection_error(result.error_message)
+
+    async def _validate_provider(self) -> None:
+        """Quick background check if the AI provider is reachable.
+
+        Sends a minimal review request. Updates status bar and advisory
+        pane based on the result.
+        """
+        result = await self._provider.review("echo test")
+        if result.success:
+            self._last_ai_failed = False
+            self._update_ai_status("")
+            self._show_advisory_notice(
+                "AI review: on\n\n"
+                "✓ Connected to "
+                f"{self._provider.provider_name}."
+            )
+        else:
+            self._last_ai_failed = True
+            self._update_ai_status("offline")
+            self._show_connection_error(result.error_message)
 
     def _show_ai_review(self, command: str, response: AIReviewResponse) -> None:
         """Display an AI review result in the advisory pane. Persists until next review."""
@@ -509,6 +602,43 @@ class RidinCLIgunApp(App):
                 secret_mode=self.state.secret_mode,
                 shell_name=shell_name,
             )
+        except NoMatches:
+            pass
+
+    # ── AI status helpers ───────────────────────────────────────────
+
+    def _update_ai_status(self, status: str) -> None:
+        """Update the AI connection status in the status bar."""
+        try:
+            bar = self.query_one("#status-bar", StatusBar)
+            bar.update_state(ai_status=status)
+        except NoMatches:
+            pass
+
+    def _show_connection_error(self, error_message: str) -> None:
+        """Show a clear connection error in the advisory pane."""
+        provider = self._provider.provider_name
+        lines: list[tuple[str, str]] = [
+            ("", ""),
+            ("  ⚠ Connection Failed", "bold red"),
+            ("", ""),
+            (f"  Could not reach {provider}.", "yellow"),
+            ("", ""),
+            (f"  {error_message}", "dim"),
+            ("", ""),
+            ("  Check:", "bold"),
+            ("  - Network connection", "dim"),
+            ("  - API key in ~/.config/ridincligun/.env", "dim"),
+            ("  - Provider status page", "dim"),
+            ("", ""),
+            ("  After updating the API key,", "dim yellow"),
+            ("  restart the app to apply.", "dim yellow"),
+            ("", ""),
+            ("  Local advisories still active.", "dim green"),
+        ]
+        try:
+            advisory = self.query_one("#advisory-pane", AdvisoryPane)
+            advisory.set_content(lines)
         except NoMatches:
             pass
 

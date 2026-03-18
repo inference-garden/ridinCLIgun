@@ -53,19 +53,46 @@ Think of it as training wheels that never get in your way. Type commands like yo
 
 You'll learn faster because you see the consequences *before* they happen, not after.
 
+## Prerequisites
+
+| Requirement | Detail |
+|-------------|--------|
+| **Python** | >= 3.12 |
+| **OS** | macOS (Linux planned) |
+| **Terminal** | Any terminal emulator (iTerm2, Terminal.app, Warp, etc.) |
+| **Shell** | Any POSIX shell — uses your default (zsh, bash, sh) |
+
+For AI-powered review you also need an API key from one of the supported providers (Anthropic or OpenAI).
+
 ## Quick start
 
 ```bash
 git clone git@github.com:inference-garden/ridinCLIgun.git
 cd ridinCLIgun
-pip install -e ".[all]"
+pip install -e ".[anthropic]"    # core + Anthropic support
 python -m ridincligun
+```
+
+Other install options:
+
+```bash
+pip install -e "."               # core only (local warnings, no AI)
+pip install -e ".[openai]"       # core + OpenAI support
+pip install -e ".[all]"          # everything including dev tools
 ```
 
 ### Want AI review?
 
+Add your API key (the config directory is created on first run):
+
 ```bash
 echo "ANTHROPIC_API_KEY=your-key" >> ~/.config/ridincligun/.env
+```
+
+Or for OpenAI:
+
+```bash
+echo "OPENAI_API_KEY=your-key" >> ~/.config/ridincligun/.env
 ```
 
 Then `Ctrl+G, A` inside the app to switch it on.

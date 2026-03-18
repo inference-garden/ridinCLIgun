@@ -52,6 +52,7 @@ class AppState:
     phase: Phase = Phase.TYPING
     ai_enabled: bool = False
     secret_mode: bool = False
+    secrets_detected: bool = False  # True when live input contains likely secrets
     current_input: str = ""
     last_review: ReviewResult | None = None
     leader_active: bool = False

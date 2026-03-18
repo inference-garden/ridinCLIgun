@@ -29,6 +29,7 @@ class StatusBar(Widget):
         self._secret_mode = False
         self._shell_name = "zsh"
         self._leader_active = False
+        self._ai_status: str = ""  # "", "offline", "error"
 
     def update_state(
         self,
@@ -36,6 +37,7 @@ class StatusBar(Widget):
         secret_mode: bool | None = None,
         shell_name: str | None = None,
         leader_active: bool | None = None,
+        ai_status: str | None = None,
     ) -> None:
         """Update displayed state and refresh."""
         if ai_enabled is not None:
@@ -46,6 +48,8 @@ class StatusBar(Widget):
             self._shell_name = shell_name
         if leader_active is not None:
             self._leader_active = leader_active
+        if ai_status is not None:
+            self._ai_status = ai_status
         self.refresh()
 
     def render_line(self, y: int) -> Strip:
@@ -55,11 +59,22 @@ class StatusBar(Widget):
 
         width = self.size.width
         dim = Style.parse("dim")
-        ai_style = Style.parse("bold green") if self._ai_enabled else Style.parse("dim red")
         secret_style = Style.parse("bold yellow") if self._secret_mode else Style.parse("dim")
-
-        ai_text = "on" if self._ai_enabled else "off"
         secret_text = "on" if self._secret_mode else "off"
+
+        # AI status: show connection state when relevant
+        if self._ai_status == "offline":
+            ai_style = Style.parse("bold red")
+            ai_text = "offline"
+        elif self._ai_status == "error":
+            ai_style = Style.parse("bold red")
+            ai_text = "error"
+        elif self._ai_enabled:
+            ai_style = Style.parse("bold green")
+            ai_text = "on"
+        else:
+            ai_style = Style.parse("dim red")
+            ai_text = "off"
 
         left_segments = [
             Segment("  AI: ", dim),
