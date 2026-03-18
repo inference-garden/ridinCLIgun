@@ -19,6 +19,13 @@ from ridincligun.advisory.secret_detector import detect_secrets
 from ridincligun.config import Config, load_config, save_split_ratio
 from ridincligun.provider import create_provider
 from ridincligun.provider.base import AIReviewResponse
+from ridincligun.provider.deep_analysis import (
+    check_deep_analysis_trigger,
+    fetch_script,
+    build_deep_analysis_prompt,
+    DEEP_ANALYSIS_SYSTEM,
+)
+from ridincligun.provider.prompt import get_redaction_diff
 from ridincligun.shell.input_parser import extract_current_command
 from ridincligun.shortcuts.bindings import LeaderAction, LeaderState
 from ridincligun.state import AppState, Phase
@@ -82,6 +89,7 @@ class RidinCLIgunApp(App):
         self._review_task: asyncio.Task | None = None
         self._ai_review_showing = False  # True while an AI review is displayed
         self._last_ai_failed = False  # True if the most recent AI call failed
+        self._pending_review_command: str | None = None  # awaiting preview confirmation
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-container"):
@@ -121,7 +129,10 @@ class RidinCLIgunApp(App):
     # ── Shell event handlers ────────────────────────────────────
 
     def on_shell_pane_any_key_pressed(self, _message: ShellPane.AnyKeyPressed) -> None:
-        """Dismiss help when the user types anything in the shell."""
+        """Dismiss help or pending preview when the user types anything in the shell."""
+        if self._pending_review_command is not None:
+            self._pending_review_command = None
+            self._show_advisory_notice("Review cancelled.")
         if self._help_showing:
             self._help_showing = False
             self._show_advisory_welcome()
@@ -179,6 +190,10 @@ class RidinCLIgunApp(App):
 
     def _dispatch_leader_action(self, action: LeaderAction) -> None:
         """Execute a leader key action."""
+        # Cancel pending redaction preview on any action other than REVIEW
+        if action != LeaderAction.REVIEW and self._pending_review_command is not None:
+            self._pending_review_command = None
+
         match action:
             case LeaderAction.TOGGLE_AI:
                 self.state.ai_enabled = not self.state.ai_enabled
@@ -265,10 +280,59 @@ class RidinCLIgunApp(App):
         except NoMatches:
             pass
 
+    # ── Redaction preview ───────────────────────────────────────────
+
+    def _show_redaction_preview(self, diff) -> None:
+        """Show what will be sent to AI vs. the original command."""
+        from ridincligun.provider.prompt import RedactionDiff
+
+        if not isinstance(diff, RedactionDiff):
+            return
+
+        lines: list[tuple[str, str]] = [
+            ("", ""),
+            ("  🔍 Redaction Preview", "bold cyan"),
+            ("", ""),
+            ("  Ctrl+G, R to confirm and send.", "bold green"),
+            ("  Any other key to cancel.", "dim"),
+            ("", ""),
+            ("  Original:", "bold"),
+            (f"  {diff.original}", "dim"),
+            ("", ""),
+            ("  Sent to AI:", "bold"),
+            (f"  {diff.redacted}", "yellow"),
+            ("", ""),
+        ]
+
+        if diff.placeholders:
+            lines.append(("  Masked:", "bold"))
+            for placeholder, reason in diff.placeholders:
+                lines.append((f"  {placeholder} — {reason}", "dim yellow"))
+            lines.append(("", ""))
+
+        lines.append(("  Switch off in [privacy] config.", "dim"))
+
+        try:
+            advisory = self.query_one("#advisory-pane", AdvisoryPane)
+            advisory.set_content(lines)
+        except NoMatches:
+            pass
+
     # ── AI Review ────────────────────────────────────────────────
 
     def _trigger_ai_review(self) -> None:
-        """Trigger an AI review of the current command."""
+        """Trigger an AI review of the current command.
+
+        If redaction preview is enabled and the command gets redacted,
+        shows a preview first. Press Ctrl+G, R again to confirm.
+        """
+        # Second press confirms a pending preview
+        if self._pending_review_command is not None:
+            command = self._pending_review_command
+            self._pending_review_command = None
+            self._send_ai_review(command)
+            return
+
         # Starting a new review clears any previous review lock
         self._ai_review_showing = False
 
@@ -310,6 +374,19 @@ class RidinCLIgunApp(App):
             self._show_advisory_notice("No command to review.")
             return
 
+        # Show redaction preview if enabled and command gets redacted
+        if self.config.show_redaction_preview:
+            diff = get_redaction_diff(command)
+            if diff.has_changes:
+                self._pending_review_command = command
+                self._show_redaction_preview(diff)
+                return
+
+        # No preview needed — send directly
+        self._send_ai_review(command)
+
+    def _send_ai_review(self, command: str) -> None:
+        """Actually send the command for AI review."""
         # Cancel any in-flight review
         if self._review_task and not self._review_task.done():
             self._review_task.cancel()
@@ -326,7 +403,11 @@ class RidinCLIgunApp(App):
         self._review_task = asyncio.create_task(self._do_ai_review(command))
 
     async def _do_ai_review(self, command: str) -> None:
-        """Perform the AI review asynchronously."""
+        """Perform the AI review asynchronously (Layer 2).
+
+        After showing the review, checks if the command triggers deep
+        analysis (Layer 3) and starts it automatically.
+        """
         result = await self._provider.review(command)
 
         # Defense in depth: suppress result if secret mode was enabled
@@ -341,10 +422,89 @@ class RidinCLIgunApp(App):
             self._last_ai_failed = False
             self._update_ai_status("")
             self._show_ai_review(command, result.response)
+
+            # Check for Layer 3: deep analysis of remote scripts
+            trigger = check_deep_analysis_trigger(command)
+            if trigger.should_analyze:
+                asyncio.create_task(self._do_deep_analysis(command, trigger))
         else:
             self._last_ai_failed = True
             self._update_ai_status("offline")
             self._show_connection_error(result.error_message)
+
+    async def _do_deep_analysis(self, command: str, trigger) -> None:
+        """Layer 3: fetch and analyze a remote script.
+
+        Appends results to the existing AI review in the advisory pane.
+        """
+        # Show "fetching" indicator appended to current review
+        self._append_advisory_lines([
+            ("", ""),
+            ("  ⏳ Fetching script content...", "bold cyan"),
+            (f"  {trigger.url}", "dim"),
+        ])
+
+        # Fetch the script
+        result = await fetch_script(trigger.url)
+
+        if self.state.secret_mode:
+            return  # Suppressed
+
+        if not result.success:
+            self._append_advisory_lines([
+                ("", ""),
+                ("  ⚠ Could not fetch script", "bold yellow"),
+                (f"  {result.error}", "dim"),
+            ])
+            return
+
+        # Show script size, then send to AI
+        size_info = f"{result.size_bytes:,} bytes"
+        if result.truncated:
+            size_info += " (truncated to 64KB)"
+
+        self._append_advisory_lines([
+            ("", ""),
+            (f"  📄 Script fetched: {size_info}", "cyan"),
+            ("  Analyzing content...", "bold cyan"),
+        ])
+
+        # Build deep analysis prompt and send to provider
+        prompt = build_deep_analysis_prompt(
+            trigger.url, result.content, result.truncated
+        )
+        analysis = await self._provider.review(
+            prompt,
+            context="deep_script_analysis",
+        )
+
+        if self.state.secret_mode:
+            return
+
+        if analysis.success and analysis.response:
+            self._append_advisory_lines([
+                ("", ""),
+                ("  🔬 Script Analysis", "bold magenta"),
+                ("", ""),
+                (f"  {analysis.response.summary}", "yellow"),
+                ("", ""),
+            ])
+            if analysis.response.explanation:
+                self._append_advisory_lines([
+                    (f"  {analysis.response.explanation}", "dim"),
+                    ("", ""),
+                ])
+            if analysis.response.suggestion:
+                self._append_advisory_lines([
+                    (f"  💡 {analysis.response.suggestion}", "dim green"),
+                    ("", ""),
+                ])
+        else:
+            self._append_advisory_lines([
+                ("", ""),
+                ("  ⚠ Script analysis failed", "bold yellow"),
+                (f"  {analysis.error_message}", "dim"),
+            ])
 
     async def _validate_provider(self) -> None:
         """Quick background check if the AI provider is reachable.
@@ -643,6 +803,14 @@ class RidinCLIgunApp(App):
             pass
 
     # ── Advisory pane helpers ─────────────────────────────────────
+
+    def _append_advisory_lines(self, lines: list[tuple[str, str]]) -> None:
+        """Append styled lines to the current advisory content."""
+        try:
+            advisory = self.query_one("#advisory-pane", AdvisoryPane)
+            advisory.append_content(lines)
+        except NoMatches:
+            pass
 
     def _show_advisory_notice(self, message: str) -> None:
         """Show a brief notice in the advisory pane. First line bold, rest dim."""

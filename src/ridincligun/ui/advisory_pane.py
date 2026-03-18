@@ -62,6 +62,12 @@ class AdvisoryPane(Widget, can_focus=True):
         self.clear_selection()
         self.refresh()
 
+    def append_content(self, lines: list[tuple[str, str]]) -> None:
+        """Append lines to the existing advisory content."""
+        self._raw_lines.extend(lines)
+        self._rewrap()
+        self.refresh()
+
     def clear(self) -> None:
         """Reset to welcome message."""
         self._set_welcome()

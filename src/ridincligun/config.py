@@ -52,6 +52,9 @@ class Config:
     # UI settings
     split_ratio: tuple[int, int] = (3, 2)  # shell:advisory as fr units
 
+    # Privacy settings
+    show_redaction_preview: bool = True  # show what gets sent to AI before sending
+
     @property
     def env_file(self) -> Path:
         return self.config_dir / ".env"
@@ -100,6 +103,10 @@ def _ensure_config_dir(config_dir: Path) -> None:
             "timeout_seconds = 10.0\n"
             "max_tokens = 1024\n"
             "\n"
+            "[privacy]\n"
+            "# Show what will be sent to AI before sending (true/false)\n"
+            "show_redaction_preview = true\n"
+            "\n"
             "[ui]\n"
             "# Split ratio as shell:advisory (fr units)\n"
             "split_ratio = [3, 2]\n"
@@ -147,6 +154,11 @@ def load_config(config_dir: Path | None = None) -> Config:
                 ),
                 max_tokens=int(provider_data.get("max_tokens", config.provider.max_tokens)),
             )
+
+        # Privacy settings
+        privacy_data = data.get("privacy", {})
+        if "show_redaction_preview" in privacy_data:
+            config.show_redaction_preview = bool(privacy_data["show_redaction_preview"])
 
         # UI settings
         ui_data = data.get("ui", {})

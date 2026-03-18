@@ -7,6 +7,7 @@ touching adapter or manager code.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 SYSTEM_PROMPT = """\
 You are a technical shell command reviewer in a developer tool called ridinCLIgun.
@@ -21,8 +22,8 @@ Rules:
   without graphic detail about outcomes.
 - Suggest safer alternatives when applicable.
 - Keep responses short — displayed in a narrow side panel.
-- Commands may contain placeholders like [TARGET], [PIPE_TARGET], [PATTERN] — these
-  represent sanitized values. Treat them as their real equivalents.
+- Commands may contain placeholders like [SENSITIVE_FILE] or [REDACTED] — these
+  represent privacy-redacted values. Treat them as their real equivalents.
 
 Response format (use exactly these headers):
 RISK: <safe|caution|warning|danger>
@@ -33,38 +34,13 @@ SUGGESTION: <safer alternative, or "None" if appropriate>
 
 # ── Command sanitization ──────────────────────────────────────────
 #
-# The Anthropic API content filter can block responses about dangerous
-# commands. We replace dangerous literals with neutral placeholders
-# before sending. The system prompt tells the model to treat them as real.
+# Privacy-only redaction: we only redact values that could leak user
+# secrets or sensitive file paths. Command structure (rm -rf /, | bash,
+# /dev/sda, etc.) is sent unmodified — the AI needs this context to
+# give accurate risk assessments.
 
 _SANITIZE_PATTERNS: list[tuple[re.Pattern, str]] = [
-    # ── Destructive filesystem commands ───────────────────────────
-    # Full destructive commands: rm -rf /, rm -rf /* etc.
-    (re.compile(r"rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+)?/(\*|\s|$)"), "rm [FLAGS] [TARGET]"),
-    # Device paths: /dev/sda, /dev/disk0, /dev/zero etc.
-    (re.compile(r"/dev/\S+"), "[DEVICE]"),
-    # mkfs/format commands
-    (re.compile(r"mkfs\.\w+\s+\S+"), "mkfs [TARGET]"),
-    # dd with of= targeting devices or root
-    (re.compile(r"dd\s+.*?of=/\S+"), "dd [DD_PARAMS] of=[TARGET]"),
-    # chmod/chown 777 or recursive on root
-    (re.compile(r"(chmod|chown)\s+(-[a-zA-Z]*\s+)?(\d{3,4}|[a-z]+:[a-z]+)\s+/(\*|\s|$)"),
-     r"\1 [PERMS] [TARGET]"),
-    # Root-destructive paths: /* or standalone /
-    (re.compile(r"(?<!\w)/\*"), "[TARGET]"),
-    (re.compile(r"\s/\s"), " [TARGET] "),
-
-    # ── Code execution via pipe ───────────────────────────────────
-    # Pipe-to-shell patterns: curl ... | bash, wget ... | sh
-    (re.compile(r"\|\s*(bash|sh|zsh|dash)\b"), "| [PIPE_TARGET]"),
-    # Fork bomb patterns
-    (re.compile(r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;?\s*:"), "[PATTERN]"),
-
-    # ── System file overwrites ────────────────────────────────────
-    (re.compile(r">\s*/etc/\S+"), "> [SYSTEM_FILE]"),
-    (re.compile(r">\s*/boot/\S+"), "> [SYSTEM_FILE]"),
-
-    # ── Sensitive file access ─────────────────────────────────────
+    # ── Sensitive file paths ───────────────────────────────────────
     # SSH keys, credentials, shadow, shell history
     (re.compile(r"~?/\.ssh/\S+"), "[SENSITIVE_FILE]"),
     (re.compile(r"~?/\.aws/\S+"), "[SENSITIVE_FILE]"),
@@ -75,7 +51,7 @@ _SANITIZE_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"~?/\.netrc\b"), "[SENSITIVE_FILE]"),
     (re.compile(r"~?/\.pgpass\b"), "[SENSITIVE_FILE]"),
 
-    # ── Inline secrets in commands ────────────────────────────────
+    # ── Inline secrets in commands ─────────────────────────────────
     # export SECRET_KEY=value, export API_KEY=value etc.
     (re.compile(
         r"(export\s+\w*(SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH)\w*=)\S+",
@@ -85,22 +61,66 @@ _SANITIZE_PATTERNS: list[tuple[re.Pattern, str]] = [
 
 
 def _sanitize_command(command: str) -> str:
-    """Replace dangerous literal targets with neutral placeholders.
+    """Redact privacy-sensitive values from a command before sending to AI.
 
-    This prevents the API content filter from blocking responses about
-    dangerous commands. The AI is instructed to treat placeholders as real.
+    Only redacts secrets and sensitive file paths. Command structure
+    (dangerous verbs, flags, targets, pipe chains) is preserved so the
+    AI can give accurate risk assessments.
 
     KNOWN LIMITS (best-effort, not a privacy guarantee):
-    - Only covers patterns in _SANITIZE_PATTERNS; novel attack vectors pass through.
+    - Only covers patterns in _SANITIZE_PATTERNS; novel secret formats pass through.
     - Does not parse shell syntax — aliases, variables, backticks, $() can bypass.
     - Does not redact arbitrary user data (filenames, hostnames, URLs).
-    - Python/perl/ruby one-liners with embedded shell commands are not caught.
-    - The full command verb and structure are always sent to the API.
+    - The real-time secret detector (advisory/secret_detector.py) is the primary
+      defense — this is a secondary safety net.
     """
     result = command
     for pattern, replacement in _SANITIZE_PATTERNS:
         result = pattern.sub(replacement, result)
     return result
+
+
+# Human-readable labels for placeholder types
+_PLACEHOLDER_LABELS: dict[str, str] = {
+    "[SENSITIVE_FILE]": "Sensitive file path",
+    "[REDACTED]": "Secret value",
+}
+
+
+@dataclass(frozen=True)
+class RedactionDiff:
+    """Comparison of original vs. redacted command."""
+
+    original: str
+    redacted: str
+    has_changes: bool
+    placeholders: list[tuple[str, str]]  # (placeholder, human-readable reason)
+
+
+def get_redaction_diff(command: str) -> RedactionDiff:
+    """Compare a command before and after sanitization.
+
+    Returns the original, the redacted version, and a list of
+    placeholders that were inserted with human-readable explanations.
+    """
+    redacted = _sanitize_command(command)
+    has_changes = redacted != command
+
+    # Find which placeholders are present in the redacted output
+    seen: set[str] = set()
+    placeholders: list[tuple[str, str]] = []
+    for placeholder, label in _PLACEHOLDER_LABELS.items():
+        if placeholder in redacted and placeholder not in command:
+            if placeholder not in seen:
+                seen.add(placeholder)
+                placeholders.append((placeholder, label))
+
+    return RedactionDiff(
+        original=command,
+        redacted=redacted,
+        has_changes=has_changes,
+        placeholders=placeholders,
+    )
 
 
 def build_review_prompt(command: str, context: str = "") -> str:
