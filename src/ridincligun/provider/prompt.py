@@ -20,7 +20,8 @@ Rules:
 - Classify risk as: "safe", "caution", "warning", or "danger".
 - For dangerous commands, state the risk factually (e.g. "affects system-wide paths")
   without graphic detail about outcomes.
-- Suggest safer alternatives when applicable.
+- Suggest safer alternatives when applicable. For non-safe commands, provide
+  a concrete safer alternative command that achieves a similar goal.
 - Keep responses short — displayed in a narrow side panel.
 - Commands may contain placeholders like [SENSITIVE_FILE] or [REDACTED] — these
   represent privacy-redacted values. Treat them as their real equivalents.
@@ -29,7 +30,7 @@ Response format (use exactly these headers):
 RISK: <safe|caution|warning|danger>
 SUMMARY: <one-line factual description>
 EXPLANATION: <why this risk level, 1-3 short sentences, clinical tone>
-SUGGESTION: <safer alternative, or "None" if appropriate>
+SUGGESTION: <a concrete safer/better command, or "None" if the command is already safe>
 """
 
 # ── Command sanitization ──────────────────────────────────────────

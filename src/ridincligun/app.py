@@ -17,6 +17,7 @@ from ridincligun.advisory.engine import AdvisoryEngine
 from ridincligun.advisory.models import RiskLevel
 from ridincligun.advisory.secret_detector import detect_secrets
 from ridincligun.config import Config, load_config, save_split_ratio
+from ridincligun.history import HistoryEntry, ReviewHistory, now_iso
 from ridincligun.provider import create_provider
 from ridincligun.provider.base import AIReviewResponse
 from ridincligun.provider.deep_analysis import (
@@ -90,6 +91,9 @@ class RidinCLIgunApp(App):
         self._ai_review_showing = False  # True while an AI review is displayed
         self._last_ai_failed = False  # True if the most recent AI call failed
         self._pending_review_command: str | None = None  # awaiting preview confirmation
+        self._last_suggestion: str = ""  # last AI suggestion command for insert (item g)
+        self._history = ReviewHistory()  # append-only local review log (item k)
+        self._model_select_showing = False  # True while model selector is visible
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-container"):
@@ -111,7 +115,13 @@ class RidinCLIgunApp(App):
     # ── Key handling ──────────────────────────────────────────────
 
     def on_key(self, event: events.Key) -> None:
-        """Handle leader key follow-up."""
+        """Handle leader key follow-up and modal key handlers."""
+        # Model selector intercepts number keys
+        if self._model_select_showing and not self._leader.active:
+            if self._handle_model_select_key(event.key):
+                event.stop()
+                return
+
         if not self._leader.active:
             return
 
@@ -129,10 +139,12 @@ class RidinCLIgunApp(App):
     # ── Shell event handlers ────────────────────────────────────
 
     def on_shell_pane_any_key_pressed(self, _message: ShellPane.AnyKeyPressed) -> None:
-        """Dismiss help or pending preview when the user types anything in the shell."""
+        """Dismiss help, model selector, or pending preview when the user types in the shell."""
         if self._pending_review_command is not None:
             self._pending_review_command = None
             self._show_advisory_notice("Review cancelled.")
+        if self._model_select_showing:
+            self._model_select_showing = False
         if self._help_showing:
             self._help_showing = False
             self._show_advisory_welcome()
@@ -241,6 +253,15 @@ class RidinCLIgunApp(App):
 
             case LeaderAction.DEBUG:
                 self._show_debug()
+
+            case LeaderAction.INSERT_SUGGESTION:
+                self._insert_suggestion()
+
+            case LeaderAction.CMD_HELP:
+                self._show_cmd_help()
+
+            case LeaderAction.MODEL_SELECT:
+                self._show_model_selector()
 
             case LeaderAction.COPY:
                 self._do_copy()
@@ -529,6 +550,10 @@ class RidinCLIgunApp(App):
     def _show_ai_review(self, command: str, response: AIReviewResponse) -> None:
         """Display an AI review result in the advisory pane. Persists until next review."""
         self._ai_review_showing = True
+
+        # Store suggestion for insert shortcut (Ctrl+G, I)
+        self._last_suggestion = response.suggestion if response.suggestion else ""
+
         risk_styles = {
             "danger": ("bold red", "red", "⛔"),
             "warning": ("bold yellow", "yellow", "⚠️"),
@@ -552,7 +577,8 @@ class RidinCLIgunApp(App):
             lines.append(("", ""))
 
         if response.suggestion:
-            lines.append((f"  💡 {response.suggestion}", "dim green"))
+            lines.append((f"  💡 {response.suggestion}", "bold green"))
+            lines.append(("  Ctrl+G, I to insert suggestion.", "dim cyan"))
             lines.append(("", ""))
 
         lines.append((f"  — {self._provider.provider_name}", "dim"))
@@ -564,6 +590,400 @@ class RidinCLIgunApp(App):
                 f"  📊 {tok_in} in + {tok_out} out = {total_tokens} tok",
                 "dim",
             ))
+
+        try:
+            advisory = self.query_one("#advisory-pane", AdvisoryPane)
+            advisory.set_content(lines)
+        except NoMatches:
+            pass
+
+        # Log to history (item k)
+        self._history.append(HistoryEntry(
+            timestamp=now_iso(),
+            command=command,
+            source="ai",
+            risk=response.risk_assessment,
+            summary=response.summary,
+            suggestion=response.suggestion,
+            provider=self._provider.provider_name,
+            tokens=response.input_tokens + response.output_tokens,
+        ))
+
+    # ── Suggestion insert (item g) ──────────────────────────────────
+
+    def _insert_suggestion(self) -> None:
+        """Insert the last AI suggestion into the shell prompt.
+
+        Clears the current command line first (Ctrl+U), then types the
+        suggestion. The user remains sole authority — they must press
+        Enter to execute.
+        """
+        if not self._last_suggestion:
+            self._show_advisory_notice("No AI suggestion available.\nRequest a review first (Ctrl+G, R).")
+            return
+
+        # Extract just the command part from the suggestion text.
+        # The AI may say "Use `rm -i file.txt` instead" — extract the backtick part.
+        suggestion = self._extract_command_from_suggestion(self._last_suggestion)
+
+        if not suggestion:
+            self._show_advisory_notice(
+                "Could not extract a command from\n"
+                "the AI suggestion."
+            )
+            return
+
+        try:
+            shell = self.query_one("#shell-pane", ShellPane)
+            # Clear current input line (Ctrl+U) then type the suggestion
+            shell._pty.write(b"\x15")  # Ctrl+U — kill line
+            shell._pty.write(suggestion.encode("utf-8"))
+            self._show_advisory_notice(
+                f"Inserted: {suggestion}\n\n"
+                "Review before pressing Enter."
+            )
+        except NoMatches:
+            pass
+
+    @staticmethod
+    def _extract_command_from_suggestion(suggestion: str) -> str:
+        """Try to extract a runnable command from an AI suggestion string.
+
+        Looks for backtick-quoted commands first, then tries to find
+        a command sentence that starts with a known verb.
+        """
+        import re
+
+        # Try backtick-quoted command: `some command here`
+        backtick = re.search(r"`([^`]+)`", suggestion)
+        if backtick:
+            return backtick.group(1).strip()
+
+        _CMD_VERBS = {
+            "ls", "rm", "cp", "mv", "mkdir", "chmod", "chown", "find", "grep",
+            "sed", "awk", "cat", "head", "tail", "sort", "tar", "zip", "unzip",
+            "git", "docker", "kubectl", "npm", "pip", "python", "curl", "wget",
+            "ssh", "scp", "rsync", "dd", "mount", "umount", "kill", "pkill",
+            "sudo", "brew", "apt", "yum", "dnf", "pacman",
+        }
+
+        # Try to find a command fragment inside prose like
+        # "Use rm -ri /tmp/test instead" or "Try: ls -la /home"
+        # Split on prose intro words; avoid splitting on ". " inside commands
+        fragments = re.split(r"(?:^|\s)(?:Use|Try|Run|Consider|Instead)[:\s]+",
+                             suggestion, flags=re.IGNORECASE)
+        for frag in fragments:
+            frag = frag.strip().rstrip(".")
+            words = frag.split()
+            if not words:
+                continue
+            if words[0].lower() in _CMD_VERBS:
+                # Take words that look like command parts (stop at prose).
+                # A word is "prose" if it's a common English stop word AND
+                # doesn't look like a flag or path (no leading - / . ~).
+                _PROSE_WORDS = {
+                    "instead", "first", "before", "after", "rather", "which",
+                    "that", "this", "the", "for", "to", "or",
+                    "and", "if", "when", "so", "but", "as",
+                }
+                cmd_parts = []
+                for w in words:
+                    # Stop at parenthetical explanations like "(owner has...)"
+                    if w.startswith("("):
+                        break
+                    if (w.lower() in _PROSE_WORDS
+                            and len(cmd_parts) > 1
+                            and not w.startswith(("-", "/", ".", "~"))):
+                        break
+                    cmd_parts.append(w)
+                return " ".join(cmd_parts)
+
+        return ""
+
+    # ── Command help (item c) ──────────────────────────────────────
+
+    def _show_cmd_help(self) -> None:
+        """Run `cmd --help` silently and display output in advisory pane."""
+        try:
+            shell = self.query_one("#shell-pane", ShellPane)
+            command = extract_current_command(shell._screen)
+        except NoMatches:
+            return
+
+        if not command.strip():
+            self._show_advisory_notice("No command to look up.\nType a command first.")
+            return
+
+        # Extract the base command (first word, strip sudo)
+        parts = command.strip().split()
+        if parts[0] == "sudo" and len(parts) > 1:
+            base_cmd = parts[1]
+        else:
+            base_cmd = parts[0]
+
+        self._show_advisory_notice(
+            f"Looking up: {base_cmd} --help\n\n"
+            "Please wait..."
+        )
+        asyncio.create_task(self._fetch_cmd_help(base_cmd))
+
+    async def _fetch_cmd_help(self, cmd: str) -> None:
+        """Run `cmd --help` in a subprocess and display the output."""
+        import shlex
+        import subprocess
+
+        try:
+            # Security: validate command name — no shell metacharacters
+            if not cmd.replace("-", "").replace("_", "").replace(".", "").isalnum():
+                self._show_advisory_notice(
+                    f"Invalid command name: {cmd}\n\n"
+                    "Cannot look up help."
+                )
+                return
+
+            # Run in a thread to not block the event loop
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [cmd, "--help"],
+                capture_output=True,
+                timeout=5,
+                env={"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
+            )
+
+            output = result.stdout.decode("utf-8", errors="replace")
+            if not output:
+                output = result.stderr.decode("utf-8", errors="replace")
+
+            if not output.strip():
+                self._show_advisory_notice(
+                    f"No help output for: {cmd}\n\n"
+                    "The command may not support --help."
+                )
+                return
+
+            # Format for advisory pane
+            lines: list[tuple[str, str]] = [
+                ("", ""),
+                (f"  📖 {cmd} --help", "bold cyan"),
+                ("", ""),
+            ]
+
+            # Limit to ~80 lines to keep the pane manageable
+            help_lines = output.splitlines()[:80]
+            for help_line in help_lines:
+                lines.append((f"  {help_line}", "dim"))
+
+            if len(output.splitlines()) > 80:
+                lines.append(("", ""))
+                lines.append(("  ... (truncated)", "dim yellow"))
+
+            lines.append(("", ""))
+            lines.append(("  Press any key in shell to dismiss.", "dim cyan"))
+
+            try:
+                advisory = self.query_one("#advisory-pane", AdvisoryPane)
+                advisory.set_content(lines)
+            except NoMatches:
+                pass
+
+        except FileNotFoundError:
+            self._show_advisory_notice(
+                f"Command not found: {cmd}\n\n"
+                "Make sure it's installed and in PATH."
+            )
+        except subprocess.TimeoutExpired:
+            self._show_advisory_notice(
+                f"{cmd} --help timed out (5s).\n\n"
+                "The command may be interactive."
+            )
+        except Exception as e:
+            self._show_advisory_notice(f"Help lookup failed: {e}")
+
+    # ── Model selector (item j) ────────────────────────────────────
+
+    _MODEL_OPTIONS: list[tuple[str, str, str]] = [
+        # (display_name, provider_kind, model_id)
+        # Mistral: https://docs.mistral.ai/getting-started/models
+        ("Mistral Small", "mistral", "mistral-small-latest"),
+        ("Mistral Large", "mistral", "mistral-large-latest"),
+        # Anthropic: https://platform.claude.com/docs/en/docs/about-claude/models
+        ("Anthropic Claude Sonnet 4", "anthropic", "claude-sonnet-4-20250514"),
+        ("Anthropic Claude Haiku 4.5", "anthropic", "claude-haiku-4-5-20251001"),
+        # OpenAI: https://platform.openai.com/docs/models
+        ("OpenAI GPT-4o", "openai", "gpt-4o"),
+        ("OpenAI GPT-4o mini", "openai", "gpt-4o-mini"),
+    ]
+
+    def _show_model_selector(self) -> None:
+        """Show model/provider selection in the advisory pane."""
+        self._model_select_showing = True
+        current = self._provider.provider_name
+
+        lines: list[tuple[str, str]] = [
+            ("", ""),
+            ("  🔧 Model Selection", "bold cyan"),
+            ("", ""),
+            (f"  Current: {current}", "bold"),
+            ("", ""),
+        ]
+
+        for idx, (name, kind, model_id) in enumerate(self._MODEL_OPTIONS, 1):
+            marker = " ◉" if model_id in current else " ○"
+            lines.append((f"  {idx}{marker} {name}", ""))
+
+        lines.append(("", ""))
+        lines.append((f"  Type 1-{len(self._MODEL_OPTIONS)} to select.", "bold green"))
+        lines.append(("  Any other key to cancel.", "dim"))
+        lines.append(("", ""))
+        lines.append(("  Changes apply immediately.", "dim"))
+        lines.append(("  Persisted to config.toml.", "dim"))
+
+        try:
+            advisory = self.query_one("#advisory-pane", AdvisoryPane)
+            advisory.set_content(lines)
+        except NoMatches:
+            pass
+
+    def _handle_model_select_key(self, key: str) -> bool:
+        """Handle a key press during model selection. Returns True if consumed."""
+        if not self._model_select_showing:
+            return False
+
+        self._model_select_showing = False
+
+        if key in ("1", "2", "3", "4"):
+            idx = int(key) - 1
+            if idx < len(self._MODEL_OPTIONS):
+                name, kind, model_id = self._MODEL_OPTIONS[idx]
+                self._switch_model(kind, model_id, name)
+                return True
+
+        self._show_advisory_notice("Model selection cancelled.")
+        return True
+
+    def _switch_model(self, kind: str, model_id: str, display_name: str) -> None:
+        """Switch the AI provider/model and persist to config."""
+        import os
+
+        from ridincligun.config import ProviderSettings
+
+        # Resolve the appropriate API key
+        _KEY_MAP = {
+            "anthropic": "ANTHROPIC_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "mistral": "MISTRAL_API_KEY",
+        }
+        key_name = _KEY_MAP.get(kind, "ANTHROPIC_API_KEY")
+
+        # Try .env first, then os.environ
+        from dotenv import dotenv_values
+
+        env_vars = {}
+        if self.config.env_file.exists():
+            env_vars = dotenv_values(self.config.env_file)
+
+        api_key = env_vars.get(key_name, "") or os.environ.get(key_name, "") or ""
+
+        # Update config
+        self.config.provider = ProviderSettings(
+            kind=kind,
+            model=model_id,
+            timeout_seconds=self.config.provider.timeout_seconds,
+            max_tokens=self.config.provider.max_tokens,
+        )
+        self.config.api_key = api_key
+
+        # Recreate provider
+        self._provider = create_provider(self.config)
+
+        # Persist to config.toml
+        self._persist_provider_config(kind, model_id)
+
+        if not api_key:
+            self._update_ai_status("offline")
+            self._show_advisory_notice(
+                f"Switched to {display_name}\n\n"
+                f"⚠ No API key for {kind}.\n"
+                f"Add {key_name} to\n"
+                "~/.config/ridincligun/.env\n"
+                "and restart."
+            )
+        else:
+            self._show_advisory_notice(
+                f"Switched to {display_name}\n\n"
+                "Checking connection..."
+            )
+            asyncio.create_task(self._validate_provider())
+
+        self._sync_status_bar()
+
+    def _persist_provider_config(self, kind: str, model: str) -> None:
+        """Write provider kind and model to config.toml."""
+        import re as _re
+
+        config_file = self.config.config_file
+        if not config_file.exists():
+            return
+
+        try:
+            text = config_file.read_text()
+
+            # Update kind
+            if _re.search(r'^kind\s*=', text, _re.MULTILINE):
+                text = _re.sub(
+                    r'^kind\s*=\s*"[^"]*"',
+                    f'kind = "{kind}"',
+                    text, count=1, flags=_re.MULTILINE,
+                )
+            # Update model
+            if _re.search(r'^model\s*=', text, _re.MULTILINE):
+                text = _re.sub(
+                    r'^model\s*=\s*"[^"]*"',
+                    f'model = "{model}"',
+                    text, count=1, flags=_re.MULTILINE,
+                )
+
+            config_file.write_text(text)
+        except OSError:
+            pass  # Non-critical
+
+    # ── Review history display (item k) ───────────────────────────
+
+    def _show_review_history(self) -> None:
+        """Show recent review history in the advisory pane."""
+        entries = self._history.read_recent(20)
+
+        if not entries:
+            self._show_advisory_notice("No review history yet.\nHistory is recorded after AI reviews.")
+            return
+
+        risk_icons = {
+            "danger": "⛔",
+            "warning": "⚠️",
+            "caution": "💡",
+            "safe": "✅",
+        }
+
+        lines: list[tuple[str, str]] = [
+            ("", ""),
+            ("  📜 Review History", "bold cyan"),
+            (f"  ({len(entries)} most recent)", "dim"),
+            ("", ""),
+        ]
+
+        for entry in entries:
+            icon = risk_icons.get(entry.risk, "ℹ️")
+            # Truncate long commands
+            cmd = entry.command[:40] + "..." if len(entry.command) > 40 else entry.command
+            lines.append((f"  {icon} {cmd}", ""))
+            lines.append((f"    {entry.summary[:60]}", "dim"))
+            ts = entry.timestamp[:19].replace("T", " ")  # trim to readable
+            lines.append((f"    {ts} via {entry.source}", "dim cyan"))
+            lines.append(("", ""))
+
+        total = self._history.entry_count()
+        lines.append((f"  Total entries: {total}", "dim"))
+        lines.append((f"  File: {self._history.file_path}", "dim"))
 
         try:
             advisory = self.query_one("#advisory-pane", AdvisoryPane)
@@ -848,7 +1268,10 @@ class RidinCLIgunApp(App):
                 ("", ""),
                 ("  Ctrl+G leader key:", "bold"),
                 ("  Ctrl+G, R      AI review command", ""),
+                ("  Ctrl+G, I      insert AI suggestion", ""),
+                ("  Ctrl+G, ?      show cmd --help", ""),
                 ("  Ctrl+G, A      toggle AI on/off", ""),
+                ("  Ctrl+G, M      model selection", ""),
                 ("  Ctrl+G, S      toggle Secret mode", ""),
                 ("  Ctrl+G, H      this help", ""),
                 ("  Ctrl+G, X      restart shell", ""),

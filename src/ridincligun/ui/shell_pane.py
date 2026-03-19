@@ -305,10 +305,12 @@ class ShellPane(Widget, can_focus=True):
             self._scroll_offset = 0
         self._cursor_visible = True
 
-        # When leader mode is active, let all keys bubble to the App
+        # When leader mode or model selector is active, let keys bubble to App
         from ridincligun.app import RidinCLIgunApp  # noqa: E402
 
-        if isinstance(self.app, RidinCLIgunApp) and self.app._leader.active:
+        if isinstance(self.app, RidinCLIgunApp) and (
+            self.app._leader.active or self.app._model_select_showing
+        ):
             return
 
         # Key-to-bytes mapping for shell-native special keys

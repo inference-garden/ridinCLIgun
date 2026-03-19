@@ -26,6 +26,9 @@ class LeaderAction(Enum):
     COPY = auto()         # C — copy (fallback if Cmd+C unavailable)
     PASTE = auto()        # V — paste (fallback if Cmd+V unavailable)
     QUIT = auto()         # Q — quit (fallback if Cmd+Q unavailable)
+    INSERT_SUGGESTION = auto()  # I — insert AI suggestion into shell
+    CMD_HELP = auto()     # ? — show --help for current command
+    MODEL_SELECT = auto()  # M — model/provider selection
 
 
 # Map follow-up keys to actions
@@ -39,6 +42,10 @@ LEADER_MAP: dict[str, LeaderAction] = {
     "c": LeaderAction.COPY,
     "v": LeaderAction.PASTE,
     "q": LeaderAction.QUIT,
+    "i": LeaderAction.INSERT_SUGGESTION,
+    "?": LeaderAction.CMD_HELP,
+    "question_mark": LeaderAction.CMD_HELP,
+    "m": LeaderAction.MODEL_SELECT,
 }
 
 # Timeout in seconds for the follow-up key after Ctrl+G

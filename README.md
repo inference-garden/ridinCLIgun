@@ -62,40 +62,62 @@ You'll learn faster because you see the consequences *before* they happen, not a
 | **Terminal** | Any terminal emulator (iTerm2, Terminal.app, Warp, etc.) |
 | **Shell** | Any POSIX shell — uses your default (zsh, bash, sh) |
 
-For AI-powered review you also need an API key from one of the supported providers (Anthropic or OpenAI).
+For AI-powered review you also need an API key from one of the supported providers.
 
 ## Quick start
 
 ```bash
 git clone git@github.com:inference-garden/ridinCLIgun.git
 cd ridinCLIgun
-pip install -e ".[anthropic]"    # core + Anthropic support
+```
+
+### Install options
+
+ridinCLIgun is **provider-agnostic** — it works with multiple AI providers,
+or with no AI at all. Choose what fits:
+
+**a) All AI providers** — install everything, decide later which to use:
+
+```bash
+pip install -e ".[all]"
+```
+
+**b) Lightweight** — local warnings only, no AI, no extra downloads:
+
+```bash
+pip install -e "."
+```
+
+**c) Pick your provider** — install only what you need:
+
+```bash
+pip install -e ".[mistral]"     # c1 — Mistral (le Chat)
+pip install -e ".[anthropic]"   # c2 — Anthropic (Claude)
+pip install -e ".[openai]"      # c3 — OpenAI (GPT)
+```
+
+Then start the app:
+
+```bash
 python -m ridincligun
 ```
 
-Other install options:
+### Setting up AI review
+
+Add your API key to the config file (created on first run):
 
 ```bash
-pip install -e "."               # core only (local warnings, no AI)
-pip install -e ".[openai]"       # core + OpenAI support
-pip install -e ".[all]"          # everything including dev tools
-```
+# Mistral (https://console.mistral.ai/)
+echo "MISTRAL_API_KEY=your-key" >> ~/.config/ridincligun/.env
 
-### Want AI review?
-
-Add your API key (the config directory is created on first run):
-
-```bash
+# Anthropic (https://console.anthropic.com/)
 echo "ANTHROPIC_API_KEY=your-key" >> ~/.config/ridincligun/.env
-```
 
-Or for OpenAI:
-
-```bash
+# OpenAI (https://platform.openai.com/)
 echo "OPENAI_API_KEY=your-key" >> ~/.config/ridincligun/.env
 ```
 
-Then `Ctrl+G, A` inside the app to switch it on.
+Inside the app: `Ctrl+G, A` to toggle AI on, `Ctrl+G, M` to switch between models/providers.
 
 ## Shortcuts
 
@@ -104,8 +126,11 @@ Everything goes through `Ctrl+G` as a leader key (vim-style, no timeout):
 | Key | What it does |
 |-----|-------------|
 | `Ctrl+G, R` | Ask AI to review current command |
+| `Ctrl+G, I` | Insert AI suggestion into shell |
 | `Ctrl+G, A` | Toggle AI on/off |
+| `Ctrl+G, M` | Switch AI model/provider |
 | `Ctrl+G, S` | Toggle Secret mode |
+| `Ctrl+G, ?` | Show --help for current command |
 | `Ctrl+G, C` | Copy selected text |
 | `Ctrl+G, V` | Paste |
 | `Ctrl+G, X` | Restart shell |

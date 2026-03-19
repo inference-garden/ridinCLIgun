@@ -10,28 +10,35 @@ from ridincligun.provider.manager import ProviderManager
 def create_provider(config: Config) -> ProviderManager:
     """Create the appropriate ProviderManager based on config.
 
-    Supports: 'anthropic' (default), 'openai'.
+    Supports: 'anthropic' (default), 'openai', 'mistral'.
     Falls back to Anthropic if the provider kind is unrecognized.
     """
-    adapter: ProviderAdapter
+    import os
 
+    adapter: ProviderAdapter
     kind = config.provider.kind.lower()
+
+    # Resolve the appropriate API key for the provider
+    _KEY_ENV = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "mistral": "MISTRAL_API_KEY",
+    }
+    key_name = _KEY_ENV.get(kind, "ANTHROPIC_API_KEY")
+    api_key = config.api_key or os.environ.get(key_name, "")
 
     if kind == "openai":
         from ridincligun.provider.openai import OpenAIAdapter
 
-        # Resolve OpenAI key from .env or env var
-        import os
-
-        api_key = config.api_key or os.environ.get("OPENAI_API_KEY", "")
         adapter = OpenAIAdapter(api_key=api_key, model=config.provider.model)
+    elif kind == "mistral":
+        from ridincligun.provider.mistral import MistralAdapter
+
+        adapter = MistralAdapter(api_key=api_key, model=config.provider.model)
     else:
         # Default: Anthropic
         from ridincligun.provider.anthropic import AnthropicAdapter
 
-        adapter = AnthropicAdapter(
-            api_key=config.api_key,
-            model=config.provider.model,
-        )
+        adapter = AnthropicAdapter(api_key=api_key, model=config.provider.model)
 
     return ProviderManager(adapter, timeout=config.provider.timeout_seconds)
