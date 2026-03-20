@@ -2,22 +2,29 @@
 
 import pytest
 
-from ridincligun.advisory.secret_detector import SecretMatch, detect_secrets
-
+from ridincligun.advisory.secret_detector import detect_secrets
 
 # ── API key detection ──────────────────────────────────────────────
 
 @pytest.mark.parametrize(
     "command,expected_kind",
     [
-        ("curl -H 'Authorization: Bearer sk-ant-api03-abc123def456ghi789jkl012mno345' https://api.example.com", "api_key"),
+        (
+            "curl -H 'Authorization: Bearer sk-ant-api03-abc123def456ghi789jkl012mno345'"
+            " https://api.example.com",
+            "api_key",
+        ),
         ("export OPENAI_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz1234567890", "api_key"),
         ("echo ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789", "api_key"),
         ("GH_TOKEN=gho_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789 gh pr list", "api_key"),
         ("export TOKEN=github_pat_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdef", "api_key"),
         ("SLACK_TOKEN=xoxb-123456789-abcdefghij-zyxwvutsrq", "api_key"),
         ("aws configure set aws_access_key_id AKIAIOSFODNN7EXAMPLE", "api_key"),
-        ("gcloud auth activate-service-account --key AIzaSyA1234567890abcdefghijklmnopqrstuvwx", "api_key"),
+        (
+            "gcloud auth activate-service-account"
+            " --key AIzaSyA1234567890abcdefghijklmnopqrstuvwx",
+            "api_key",
+        ),
         ("GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx", "api_key"),
         ("echo npm_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789", "api_key"),
         ("twine upload --token pypi-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789", "api_key"),

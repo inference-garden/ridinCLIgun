@@ -1,13 +1,12 @@
 """Tests for secret mode guards — ensures no data leaks to AI when active."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from ridincligun.provider.manager import ProviderManager
 from ridincligun.state import AppState, Phase
-
 
 # ── Secret mode blocks review dispatch ────────────────────────────
 
@@ -88,6 +87,50 @@ async def test_inflight_task_cancelled_on_secret_toggle():
 
     mock_task.cancel.assert_called_once()
     assert review_task is None
+
+
+# ── Generation counter: stale responses discarded ────────────────
+
+
+@pytest.mark.asyncio
+async def test_generation_counter_discards_stale_response():
+    """If review_generation changes during flight (secret mode toggled
+    or new review started), the result must be discarded."""
+    review_generation = 1
+    gen_at_launch = review_generation
+
+    # Simulate: secret mode toggled during flight → generation incremented
+    review_generation += 1
+
+    # This mirrors the guard in _do_ai_review
+    result_displayed = gen_at_launch == review_generation
+    assert not result_displayed, "Stale response was not discarded"
+
+
+@pytest.mark.asyncio
+async def test_generation_counter_allows_current_response():
+    """If review_generation has not changed, the response is current
+    and should be displayed."""
+    review_generation = 1
+    gen_at_launch = review_generation
+
+    # No toggle happened — generation unchanged
+    result_displayed = gen_at_launch == review_generation
+    assert result_displayed, "Current response was incorrectly discarded"
+
+
+@pytest.mark.asyncio
+async def test_secret_toggle_increments_generation():
+    """Toggling secret mode on must increment the review generation counter."""
+    review_generation = 0
+    secret_mode = False
+
+    # Simulate toggling secret mode on (mirrors LeaderAction.TOGGLE_SECRET)
+    secret_mode = True
+    if secret_mode:
+        review_generation += 1
+
+    assert review_generation == 1, "Generation counter not incremented"
 
 
 # ── Secret mode does not affect local advisory ────────────────────

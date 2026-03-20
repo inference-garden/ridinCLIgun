@@ -54,6 +54,10 @@ class Config:
 
     # Privacy settings
     show_redaction_preview: bool = True  # show what gets sent to AI before sending
+    clipboard_safety: bool = True  # warn before pasting secrets
+
+    # Lifecycle
+    first_run: bool = False  # True when config was created fresh (no prior config.toml)
 
     @property
     def env_file(self) -> Path:
@@ -120,6 +124,7 @@ def load_config(config_dir: Path | None = None) -> Config:
     Reads .env for API secrets into Config (not os.environ).
     """
     config_dir = config_dir or _default_config_dir()
+    is_first_run = not (config_dir / "config.toml").exists()
     _ensure_config_dir(config_dir)
 
     # Load .env into a dict — NOT into os.environ (FINDING-02)
@@ -159,6 +164,8 @@ def load_config(config_dir: Path | None = None) -> Config:
         privacy_data = data.get("privacy", {})
         if "show_redaction_preview" in privacy_data:
             config.show_redaction_preview = bool(privacy_data["show_redaction_preview"])
+        if "clipboard_safety" in privacy_data:
+            config.clipboard_safety = bool(privacy_data["clipboard_safety"])
 
         # UI settings
         ui_data = data.get("ui", {})
@@ -170,7 +177,7 @@ def load_config(config_dir: Path | None = None) -> Config:
     # Resolve API key based on provider kind.
     # .env takes priority, fall back to os.environ.
     # The key stays in Config — never injected into os.environ (FINDING-02).
-    _KEY_MAP = {
+    _KEY_MAP = {  # noqa: N806
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
     }
@@ -181,6 +188,7 @@ def load_config(config_dir: Path | None = None) -> Config:
         or ""
     )
 
+    config.first_run = is_first_run
     return config
 
 

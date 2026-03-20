@@ -1,7 +1,6 @@
 """Tests for local review history (item k)."""
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -127,10 +126,14 @@ def test_now_iso_format():
 def test_malformed_lines_skipped(history, history_file):
     """Malformed JSON lines are silently skipped."""
     history_file.parent.mkdir(parents=True, exist_ok=True)
+    ts0 = "2026-01-01T00:00:00+00:00"
+    ts1 = "2026-01-01T00:00:01+00:00"
+    ls_json = f'{{"cmd": "ls", "src": "ai", "risk": "safe", "summary": "ok", "ts": "{ts0}"}}'
+    pwd_json = f'{{"cmd": "pwd", "src": "ai", "risk": "safe", "summary": "ok", "ts": "{ts1}"}}'
     history_file.write_text(
-        '{"cmd": "ls", "src": "ai", "risk": "safe", "summary": "ok", "ts": "2026-01-01T00:00:00+00:00"}\n'
-        'this is not json\n'
-        '{"cmd": "pwd", "src": "ai", "risk": "safe", "summary": "ok", "ts": "2026-01-01T00:00:01+00:00"}\n'
+        f"{ls_json}\n"
+        "this is not json\n"
+        f"{pwd_json}\n"
     )
     entries = history.read_recent(10)
     assert len(entries) == 2

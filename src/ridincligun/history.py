@@ -9,10 +9,9 @@ File location: ~/.config/ridincligun/history.jsonl
 from __future__ import annotations
 
 import json
-import os
 import stat
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Max history file size before rotation (5 MB)
@@ -160,4 +159,4 @@ class ReviewHistory:
 
 def now_iso() -> str:
     """Current UTC timestamp in ISO format."""
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")

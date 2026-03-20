@@ -30,6 +30,11 @@ Add an AI backend and it becomes a second pair of eyes: reviewing pipelines, exp
 - **Secret mode** — one toggle to block anything from reaching the AI
 - **Draggable split pane** — resize with mouse or keyboard
 - **Copy/paste** — mouse-select text in either pane, clipboard integration
+- **Settings menu** — configure AI, privacy, and providers from inside the app (`Ctrl+G, G`)
+- **Clipboard safety** — warns before pasting commands containing secrets
+- **Redaction preview** — see exactly what gets sent to the AI before it leaves
+- **Deep script analysis** — fetches and analyzes remote scripts from `curl | bash` patterns
+- **Onboarding** — first-run guidance, no docs needed
 
 
 ### Why this exists
@@ -119,6 +124,8 @@ echo "OPENAI_API_KEY=your-key" >> ~/.config/ridincligun/.env
 
 Inside the app: `Ctrl+G, A` to toggle AI on, `Ctrl+G, M` to switch between models/providers.
 
+Or add keys from inside the app: `Ctrl+G, G` → Providers.
+
 ## Shortcuts
 
 Everything goes through `Ctrl+G` as a leader key (vim-style, no timeout):
@@ -134,13 +141,14 @@ Everything goes through `Ctrl+G` as a leader key (vim-style, no timeout):
 | `Ctrl+G, C` | Copy selected text |
 | `Ctrl+G, V` | Paste |
 | `Ctrl+G, X` | Restart shell |
+| `Ctrl+G, G` | Open settings |
 | `Ctrl+G, H` | Show all shortcuts |
 | `F6` / `F7` | Resize panes |
 | `Ctrl+Q` | Quit |
 
 ## Status
 
-**v0.2** — early release, macOS only, Python 3.12+. Works, has rough edges.
+**v0.3** — "This tool is careful." macOS, Python 3.12+.
 
 ## Config
 
@@ -148,6 +156,14 @@ Everything goes through `Ctrl+G` as a leader key (vim-style, no timeout):
 
 - `config.toml` — UI preferences, provider settings
 - `.env` — API keys (gitignored, stays local)
+
+## Documentation
+
+| Document | What it covers |
+|----------|---------------|
+| [Command Analysis](docs/command_analysis.md) | How the 3-layer analysis system decides what to check |
+| [Security Model](docs/security.md) | What is sent to the AI, security layers, known limits |
+| [Roadmap](docs/roadmap.md) | Where the project is heading |
 
 ## Development
 

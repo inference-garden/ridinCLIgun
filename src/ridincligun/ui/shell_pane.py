@@ -313,6 +313,25 @@ class ShellPane(Widget, can_focus=True):
         ):
             return
 
+        # When help is showing, let Escape bubble to App for dismissal
+        if (
+            event.key == "escape"
+            and isinstance(self.app, RidinCLIgunApp)
+            and self.app._help_showing
+        ):
+            return
+
+        # When paste confirmation is pending, intercept v/y to confirm, others cancel
+        if isinstance(self.app, RidinCLIgunApp) and self.app._pending_paste_text is not None:
+            if event.character and event.character.lower() in ("v", "y"):
+                self.app._do_paste()  # confirms pending paste
+            else:
+                self.app._pending_paste_text = None
+                self.app._toast("Paste cancelled.")
+                self.app._show_advisory_welcome()
+            event.stop()
+            return
+
         # Key-to-bytes mapping for shell-native special keys
         key_map: dict[str, bytes] = {
             "enter": b"\r",
@@ -475,7 +494,7 @@ class ShellPane(Widget, can_focus=True):
             if data:
                 try:
                     self._stream.feed(data.decode("utf-8", errors="replace"))
-                except Exception:
+                except Exception:  # nosec B110
                     # pyte can occasionally choke on malformed sequences
                     pass
                 # Snap to live view when new output arrives

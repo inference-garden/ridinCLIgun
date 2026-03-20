@@ -29,6 +29,7 @@ class LeaderAction(Enum):
     INSERT_SUGGESTION = auto()  # I — insert AI suggestion into shell
     CMD_HELP = auto()     # ? — show --help for current command
     MODEL_SELECT = auto()  # M — model/provider selection
+    SETTINGS = auto()     # G — open settings menu
 
 
 # Map follow-up keys to actions
@@ -46,6 +47,7 @@ LEADER_MAP: dict[str, LeaderAction] = {
     "?": LeaderAction.CMD_HELP,
     "question_mark": LeaderAction.CMD_HELP,
     "m": LeaderAction.MODEL_SELECT,
+    "g": LeaderAction.SETTINGS,
 }
 
 # Timeout in seconds for the follow-up key after Ctrl+G

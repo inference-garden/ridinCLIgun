@@ -3,11 +3,11 @@
 import pytest
 
 from ridincligun.provider.deep_analysis import (
-    check_deep_analysis_trigger,
-    build_deep_analysis_prompt,
     DEEP_ANALYSIS_SYSTEM,
+    FetchResult,
+    build_deep_analysis_prompt,
+    check_deep_analysis_trigger,
 )
-
 
 # ── Trigger detection ──────────────────────────────────────────────
 
@@ -96,3 +96,42 @@ def test_deep_analysis_system_prompt_has_format() -> None:
     assert "RISK:" in DEEP_ANALYSIS_SYSTEM
     assert "ACTIONS:" in DEEP_ANALYSIS_SYSTEM
     assert "CONCERNS:" in DEEP_ANALYSIS_SYSTEM
+
+
+# ── FetchResult safety states ────────────────────────────────────
+
+
+def test_fetch_result_truncated_state() -> None:
+    """FetchResult correctly represents truncation."""
+    result = FetchResult(
+        success=True,
+        content="x" * 65536,
+        url="https://example.com/big.sh",
+        size_bytes=65536,
+        truncated=True,
+    )
+    assert result.success
+    assert result.truncated
+    assert result.size_bytes == 65536
+
+
+def test_fetch_result_failure_state() -> None:
+    """FetchResult correctly represents fetch failure."""
+    result = FetchResult(
+        success=False,
+        error="Fetch timed out after 5.0s",
+        url="https://example.com/slow.sh",
+    )
+    assert not result.success
+    assert "timed out" in result.error
+
+
+def test_fetch_result_network_error_state() -> None:
+    """FetchResult correctly represents network error."""
+    result = FetchResult(
+        success=False,
+        error="Connection refused",
+        url="https://example.com/down.sh",
+    )
+    assert not result.success
+    assert result.error == "Connection refused"

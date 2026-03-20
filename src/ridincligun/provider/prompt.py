@@ -25,6 +25,9 @@ Rules:
 - Keep responses short — displayed in a narrow side panel.
 - Commands may contain placeholders like [SENSITIVE_FILE] or [REDACTED] — these
   represent privacy-redacted values. Treat them as their real equivalents.
+- If the command contains what appears to be a real API key, password, token,
+  or credential (not a placeholder), flag this immediately in your response
+  and advise the user to rotate it. This is a critical safety check.
 
 Response format (use exactly these headers):
 RISK: <safe|caution|warning|danger>

@@ -7,9 +7,19 @@ The app talks to the manager; the manager talks to adapters.
 from __future__ import annotations
 
 import asyncio
+import logging
+import sys
 from dataclasses import dataclass
 
 from ridincligun.provider.base import AIReviewResponse, ProviderAdapter, ProviderError
+
+# Debug logger — writes to stderr, never to advisory pane or history
+_log = logging.getLogger(__name__)
+if not _log.handlers:
+    _handler = logging.StreamHandler(sys.stderr)
+    _handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+    _log.addHandler(_handler)
+    _log.setLevel(logging.WARNING)
 
 # Default timeout for AI review calls (seconds)
 _DEFAULT_TIMEOUT = 15.0
@@ -73,14 +83,18 @@ class ProviderManager:
                 provider_name=self._adapter.name,
             )
         except ProviderError as e:
+            # Log full error for debugging; show only safe message to user
+            _log.warning("Provider error during review: %s", e)
             return ReviewStatus(
                 success=False,
-                error_message=str(e),
+                error_message="AI review failed — check connection and try again.",
                 provider_name=self._adapter.name,
             )
         except Exception as e:
+            # Log full exception for debugging; never expose raw details to UI
+            _log.warning("Unexpected error during review: %s", e)
             return ReviewStatus(
                 success=False,
-                error_message=f"Unexpected error: {e}",
+                error_message="AI review failed — check connection and try again.",
                 provider_name=self._adapter.name,
             )

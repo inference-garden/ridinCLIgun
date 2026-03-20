@@ -21,10 +21,9 @@ from ridincligun.history import HistoryEntry, ReviewHistory, now_iso
 from ridincligun.provider import create_provider
 from ridincligun.provider.base import AIReviewResponse
 from ridincligun.provider.deep_analysis import (
+    build_deep_analysis_prompt,
     check_deep_analysis_trigger,
     fetch_script,
-    build_deep_analysis_prompt,
-    DEEP_ANALYSIS_SYSTEM,
 )
 from ridincligun.provider.prompt import get_redaction_diff
 from ridincligun.shell.input_parser import extract_current_command
@@ -71,6 +70,7 @@ class RidinCLIgunApp(App):
     BINDINGS = [
         ("ctrl+q", "quit", "Quit"),
         ("ctrl+g", "leader", "Leader key"),
+        ("escape", "dismiss_help", "Dismiss help"),
         ("f6", "grow_divider", "Divider left (more advisory)"),
         ("f7", "shrink_divider", "Divider right (more shell)"),
     ]
@@ -91,9 +91,13 @@ class RidinCLIgunApp(App):
         self._ai_review_showing = False  # True while an AI review is displayed
         self._last_ai_failed = False  # True if the most recent AI call failed
         self._pending_review_command: str | None = None  # awaiting preview confirmation
+        self._pending_paste_text: str | None = None  # awaiting paste confirmation (secrets)
+        self._secrets_review_confirmed = False  # True after first Ctrl+G,R with secrets
         self._last_suggestion: str = ""  # last AI suggestion command for insert (item g)
         self._history = ReviewHistory()  # append-only local review log (item k)
         self._model_select_showing = False  # True while model selector is visible
+        # Incremented on secret-mode toggle + new review; stale results discarded
+        self._review_generation = 0
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main-container"):
@@ -109,6 +113,8 @@ class RidinCLIgunApp(App):
             shell.focus()
             self._apply_split_ratio()
             self._sync_status_bar()
+            if self.config.first_run:
+                self._show_onboarding()
         except NoMatches:
             pass
 
@@ -139,37 +145,45 @@ class RidinCLIgunApp(App):
     # ── Shell event handlers ────────────────────────────────────
 
     def on_shell_pane_any_key_pressed(self, _message: ShellPane.AnyKeyPressed) -> None:
-        """Dismiss help, model selector, or pending preview when the user types in the shell."""
+        """Dismiss model selector or pending preview when the user types in the shell.
+
+        Help content (shortcuts and cmd --help) persists while typing —
+        only replaced by a new advisory event (warning, review, or Escape).
+        """
         if self._pending_review_command is not None:
             self._pending_review_command = None
-            self._show_advisory_notice("Review cancelled.")
+            self._toast("Review cancelled.")
         if self._model_select_showing:
             self._model_select_showing = False
-        if self._help_showing:
-            self._help_showing = False
-            self._show_advisory_welcome()
 
     def on_shell_pane_input_changed(self, message: ShellPane.InputChanged) -> None:
         """Analyze the current command and show/clear warnings accordingly.
 
-        AI review persists while the user edits the command, but clears when:
+        AI review and help persist while the user edits the command.
+        AI review clears when:
         - Command becomes empty (executed via Enter, or cleared via Ctrl+C/U)
         - A new review is requested (Ctrl+G, R)
+        Help clears only on Escape or explicit new leader action.
         """
         command = message.command
+
+        # ── Secret detection always runs (state update) ────────────
+        secret_result = detect_secrets(command) if command else None
+        self.state.secrets_detected = (
+            secret_result.has_secrets if secret_result else False
+        )
+
+        # Help showing → keep help visible, don't update advisory pane
+        if self._help_showing:
+            return
 
         if not command:
             # Command empty → clear everything (including AI review)
             self._ai_review_showing = False
-            self.state.secrets_detected = False
             self._show_advisory_welcome()
             return
 
-        # ── Secret detection (runs on every keystroke) ─────────────
-        secret_result = detect_secrets(command)
-        self.state.secrets_detected = secret_result.has_secrets
-
-        if secret_result.has_secrets:
+        if secret_result and secret_result.has_secrets:
             self._ai_review_showing = False
             self._show_secret_warning(secret_result)
             return
@@ -186,6 +200,12 @@ class RidinCLIgunApp(App):
         self._show_warnings(result)
 
     # ── Leader key ────────────────────────────────────────────────
+
+    def action_dismiss_help(self) -> None:
+        """Dismiss help content from the advisory pane (Escape key)."""
+        if self._help_showing:
+            self._help_showing = False
+            self._show_advisory_welcome()
 
     def action_leader(self) -> None:
         """Activate Ctrl+G leader mode. No timeout — exits on next key."""
@@ -211,32 +231,26 @@ class RidinCLIgunApp(App):
                 self.state.ai_enabled = not self.state.ai_enabled
                 if self.state.ai_enabled and not self._provider.is_configured:
                     self._update_ai_status("offline")
-                    self._show_advisory_notice(
-                        "AI review: on\n\n"
-                        "⚠ No API key configured.\n"
-                        "Add it to ~/.config/ridincligun/.env\n"
-                        "and restart."
-                    )
+                    self._toast("AI review: on — no API key", severity="warning")
                 elif self.state.ai_enabled:
-                    self._show_advisory_notice(
-                        "AI review: on\n\n"
-                        "Checking connection..."
-                    )
+                    self._toast("AI review: on")
                     # Validate provider in background — updates status on result
                     asyncio.create_task(self._validate_provider())
                 else:
                     self._update_ai_status("")
-                    self._show_advisory_notice("AI review: off")
+                    self._toast("AI review: off")
                 self._sync_status_bar()
 
             case LeaderAction.TOGGLE_SECRET:
                 self.state.secret_mode = not self.state.secret_mode
                 label = "on" if self.state.secret_mode else "off"
-                # Cancel any in-flight AI review when entering secret mode
-                if self.state.secret_mode and self._review_task and not self._review_task.done():
-                    self._review_task.cancel()
-                    self._review_task = None
-                self._show_advisory_notice(f"Secret mode: {label}")
+                # Invalidate any in-flight AI review when entering secret mode
+                if self.state.secret_mode:
+                    self._review_generation += 1
+                    if self._review_task and not self._review_task.done():
+                        self._review_task.cancel()
+                        self._review_task = None
+                self._toast(f"Secret mode: {label}")
                 self._sync_status_bar()
 
             case LeaderAction.HELP:
@@ -262,6 +276,9 @@ class RidinCLIgunApp(App):
 
             case LeaderAction.MODEL_SELECT:
                 self._show_model_selector()
+
+            case LeaderAction.SETTINGS:
+                self._open_settings()
 
             case LeaderAction.COPY:
                 self._do_copy()
@@ -368,13 +385,16 @@ class RidinCLIgunApp(App):
             )
             return
 
-        if self.state.secrets_detected:
+        if self.state.secrets_detected and not self._secrets_review_confirmed:
+            self._secrets_review_confirmed = True
             self._show_advisory_notice(
                 "🔒 Secrets detected in command.\n\n"
-                "AI review blocked to protect credentials.\n"
-                "Remove secrets from the command first."
+                "Sending to AI may expose credentials.\n"
+                "Press Ctrl+G, R again to send anyway."
             )
             return
+        # Reset confirmation flag after use
+        self._secrets_review_confirmed = False
 
         if not self._provider.is_configured:
             self._show_advisory_notice(
@@ -412,6 +432,9 @@ class RidinCLIgunApp(App):
         if self._review_task and not self._review_task.done():
             self._review_task.cancel()
 
+        # Increment generation so stale responses are discarded
+        self._review_generation += 1
+
         # Show loading state and clear any previous error status
         self.state.phase = Phase.REVIEW_LOADING
         self._update_ai_status("")
@@ -420,20 +443,28 @@ class RidinCLIgunApp(App):
             f"Asking {self._provider.provider_name}..."
         )
 
-        # Launch async review
-        self._review_task = asyncio.create_task(self._do_ai_review(command))
+        # Launch async review with current generation
+        gen = self._review_generation
+        self._review_task = asyncio.create_task(self._do_ai_review(command, gen))
 
-    async def _do_ai_review(self, command: str) -> None:
+    async def _do_ai_review(self, command: str, generation: int = 0) -> None:
         """Perform the AI review asynchronously (Layer 2).
 
         After showing the review, checks if the command triggers deep
         analysis (Layer 3) and starts it automatically.
+
+        Args:
+            generation: Review generation counter at launch time.
+                        If it no longer matches self._review_generation
+                        when the response arrives, the result is stale
+                        (secret mode was toggled or a new review started)
+                        and must be discarded without rendering.
         """
         result = await self._provider.review(command)
 
-        # Defense in depth: suppress result if secret mode was enabled
-        # after the request was sent (race condition guard)
-        if self.state.secret_mode:
+        # Defense in depth: suppress result if generation changed
+        # (secret mode toggled or new review started during flight)
+        if generation != self._review_generation or self.state.secret_mode:
             self.state.phase = Phase.TYPING
             return
 
@@ -474,21 +505,29 @@ class RidinCLIgunApp(App):
         if not result.success:
             self._append_advisory_lines([
                 ("", ""),
-                ("  ⚠ Could not fetch script", "bold yellow"),
+                ("  ⚠ Script fetch failed", "bold yellow"),
                 (f"  {result.error}", "dim"),
+                ("", ""),
+                ("  The script could not be retrieved for analysis.", "dim"),
+                ("  Proceed with extra caution — content is unknown.", "dim yellow"),
             ])
             return
 
         # Show script size, then send to AI
         size_info = f"{result.size_bytes:,} bytes"
-        if result.truncated:
-            size_info += " (truncated to 64KB)"
-
-        self._append_advisory_lines([
+        lines: list[tuple[str, str]] = [
             ("", ""),
             (f"  📄 Script fetched: {size_info}", "cyan"),
-            ("  Analyzing content...", "bold cyan"),
-        ])
+        ]
+        if result.truncated:
+            lines.extend([
+                ("  ⚠ Script truncated at 64KB", "bold yellow"),
+                ("  Analysis may be incomplete — large scripts", "dim yellow"),
+                ("  could contain hidden actions after this point.", "dim yellow"),
+            ])
+        lines.append(("  Analyzing content...", "bold cyan"))
+
+        self._append_advisory_lines(lines)
 
         # Build deep analysis prompt and send to provider
         prompt = build_deep_analysis_prompt(
@@ -537,11 +576,7 @@ class RidinCLIgunApp(App):
         if result.success:
             self._last_ai_failed = False
             self._update_ai_status("")
-            self._show_advisory_notice(
-                "AI review: on\n\n"
-                "✓ Connected to "
-                f"{self._provider.provider_name}."
-            )
+            self._toast(f"✓ Connected to {self._provider.provider_name}")
         else:
             self._last_ai_failed = True
             self._update_ai_status("offline")
@@ -619,7 +654,10 @@ class RidinCLIgunApp(App):
         Enter to execute.
         """
         if not self._last_suggestion:
-            self._show_advisory_notice("No AI suggestion available.\nRequest a review first (Ctrl+G, R).")
+            self._show_advisory_notice(
+                "No AI suggestion available.\n"
+                "Request a review first (Ctrl+G, R)."
+            )
             return
 
         # Extract just the command part from the suggestion text.
@@ -659,7 +697,7 @@ class RidinCLIgunApp(App):
         if backtick:
             return backtick.group(1).strip()
 
-        _CMD_VERBS = {
+        _CMD_VERBS = {  # noqa: N806
             "ls", "rm", "cp", "mv", "mkdir", "chmod", "chown", "find", "grep",
             "sed", "awk", "cat", "head", "tail", "sort", "tar", "zip", "unzip",
             "git", "docker", "kubectl", "npm", "pip", "python", "curl", "wget",
@@ -681,7 +719,7 @@ class RidinCLIgunApp(App):
                 # Take words that look like command parts (stop at prose).
                 # A word is "prose" if it's a common English stop word AND
                 # doesn't look like a flag or path (no leading - / . ~).
-                _PROSE_WORDS = {
+                _PROSE_WORDS = {  # noqa: N806
                     "instead", "first", "before", "after", "rather", "which",
                     "that", "this", "the", "for", "to", "or",
                     "and", "if", "when", "so", "but", "as",
@@ -722,14 +760,17 @@ class RidinCLIgunApp(App):
             base_cmd = parts[0]
 
         self._show_advisory_notice(
-            f"Looking up: {base_cmd} --help\n\n"
-            "Please wait..."
+            f"Looking up help for: {base_cmd}\n\n"
+            "Trying --help, -h, man..."
         )
         asyncio.create_task(self._fetch_cmd_help(base_cmd))
 
     async def _fetch_cmd_help(self, cmd: str) -> None:
-        """Run `cmd --help` in a subprocess and display the output."""
-        import shlex
+        """Fetch help for a command using a fallback chain.
+
+        Tries in order: --help, -h, man (first 40 lines).
+        Sets _help_showing so content persists while the user edits.
+        """
         import subprocess
 
         try:
@@ -741,30 +782,70 @@ class RidinCLIgunApp(App):
                 )
                 return
 
-            # Run in a thread to not block the event loop
-            result = await asyncio.to_thread(
-                subprocess.run,
-                [cmd, "--help"],
-                capture_output=True,
-                timeout=5,
-                env={"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
-            )
+            _PATH_ENV = {"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}  # noqa: N806
 
-            output = result.stdout.decode("utf-8", errors="replace")
+            output = ""
+            source = ""
+
+            # Try --help, then -h. Accept output only when:
+            # - rc == 0 (command recognized the flag), or
+            # - stdout has content (some tools print help to stdout with rc != 0)
+            # Skip stderr-only output on failure — that's an error, not help.
+            for flag, label in [("--help", "--help"), ("-h", "-h")]:
+                try:
+                    result = await asyncio.to_thread(
+                        subprocess.run,
+                        [cmd, flag],
+                        capture_output=True,
+                        timeout=5,
+                        env=_PATH_ENV,
+                    )
+                    stdout = result.stdout.decode("utf-8", errors="replace")
+                    stderr = result.stderr.decode("utf-8", errors="replace")
+
+                    if result.returncode == 0 and (stdout.strip() or stderr.strip()):
+                        output = stdout if stdout.strip() else stderr
+                        source = label
+                        break
+                    elif stdout.strip():
+                        # Some tools exit non-zero but still print help to stdout
+                        output = stdout
+                        source = label
+                        break
+                    # stderr-only with non-zero rc → flag not recognized, try next
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    continue
+
+            # Fallback to man page (first 40 lines)
             if not output:
-                output = result.stderr.decode("utf-8", errors="replace")
+                try:
+                    result = await asyncio.to_thread(
+                        subprocess.run,
+                        ["man", cmd],
+                        capture_output=True,
+                        timeout=5,
+                        env={**_PATH_ENV, "MANPAGER": "cat", "COLUMNS": "80"},
+                    )
+                    out = result.stdout.decode("utf-8", errors="replace")
+                    if out.strip():
+                        # Take first 40 lines of man output
+                        man_lines = out.splitlines()[:40]
+                        output = "\n".join(man_lines)
+                        source = "man"
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    pass
 
             if not output.strip():
                 self._show_advisory_notice(
-                    f"No help output for: {cmd}\n\n"
-                    "The command may not support --help."
+                    f"No help found for: {cmd}\n\n"
+                    "Tried --help, -h, and man page."
                 )
                 return
 
             # Format for advisory pane
             lines: list[tuple[str, str]] = [
                 ("", ""),
-                (f"  📖 {cmd} --help", "bold cyan"),
+                (f"  📖 {cmd} {source}", "bold cyan"),
                 ("", ""),
             ]
 
@@ -778,8 +859,10 @@ class RidinCLIgunApp(App):
                 lines.append(("  ... (truncated)", "dim yellow"))
 
             lines.append(("", ""))
-            lines.append(("  Press any key in shell to dismiss.", "dim cyan"))
+            lines.append(("  Escape to dismiss.", "dim cyan"))
 
+            self._help_showing = True
+            self._ai_review_showing = False
             try:
                 advisory = self.query_one("#advisory-pane", AdvisoryPane)
                 advisory.set_content(lines)
@@ -793,7 +876,7 @@ class RidinCLIgunApp(App):
             )
         except subprocess.TimeoutExpired:
             self._show_advisory_notice(
-                f"{cmd} --help timed out (5s).\n\n"
+                "Help lookup timed out (5s).\n\n"
                 "The command may be interactive."
             )
         except Exception as e:
@@ -851,14 +934,14 @@ class RidinCLIgunApp(App):
 
         self._model_select_showing = False
 
-        if key in ("1", "2", "3", "4"):
+        if key.isdigit() and 1 <= int(key) <= len(self._MODEL_OPTIONS):
             idx = int(key) - 1
-            if idx < len(self._MODEL_OPTIONS):
-                name, kind, model_id = self._MODEL_OPTIONS[idx]
-                self._switch_model(kind, model_id, name)
-                return True
+            name, kind, model_id = self._MODEL_OPTIONS[idx]
+            self._switch_model(kind, model_id, name)
+            return True
 
-        self._show_advisory_notice("Model selection cancelled.")
+        self._toast("Model selection cancelled.")
+        self._show_advisory_welcome()
         return True
 
     def _switch_model(self, kind: str, model_id: str, display_name: str) -> None:
@@ -868,7 +951,7 @@ class RidinCLIgunApp(App):
         from ridincligun.config import ProviderSettings
 
         # Resolve the appropriate API key
-        _KEY_MAP = {
+        _KEY_MAP = {  # noqa: N806
             "anthropic": "ANTHROPIC_API_KEY",
             "openai": "OPENAI_API_KEY",
             "mistral": "MISTRAL_API_KEY",
@@ -954,7 +1037,10 @@ class RidinCLIgunApp(App):
         entries = self._history.read_recent(20)
 
         if not entries:
-            self._show_advisory_notice("No review history yet.\nHistory is recorded after AI reviews.")
+            self._show_advisory_notice(
+                "No review history yet.\n"
+                "History is recorded after AI reviews."
+            )
             return
 
         risk_icons = {
@@ -998,7 +1084,7 @@ class RidinCLIgunApp(App):
         try:
             shell = self.query_one("#shell-pane", ShellPane)
             shell.restart_shell()
-            self._show_advisory_notice("Shell restarted.")
+            self._toast("Shell restarted.")
             self._sync_status_bar()
         except NoMatches:
             pass
@@ -1024,7 +1110,7 @@ class RidinCLIgunApp(App):
                 shell.clear_selection()
             else:
                 # No selection — inform user instead of copying entire screen
-                self._show_advisory_notice("Nothing selected to copy.")
+                self._toast("Nothing selected to copy.")
                 return
             if text:
                 subprocess.run(
@@ -1033,16 +1119,33 @@ class RidinCLIgunApp(App):
                     check=True,
                     timeout=2,
                 )
-                self._show_advisory_notice(f"Copied {source} to clipboard.")
+                self._toast(f"Copied {source} to clipboard.")
             else:
-                self._show_advisory_notice("Nothing to copy.")
+                self._toast("Nothing to copy.")
         except NoMatches:
             pass
         except Exception as e:
-            self._show_advisory_notice(f"Copy failed: {e}")
+            self._toast(f"Copy failed: {e}", severity="error")
 
     def _do_paste(self) -> None:
-        """Paste from the macOS clipboard into the shell."""
+        """Paste from the macOS clipboard into the shell.
+
+        Checks clipboard content for secrets before inserting.
+        If secrets found, shows a warning — user must press Ctrl+G, V
+        again to confirm paste.
+        """
+        # If pending confirmed paste, execute it
+        if self._pending_paste_text is not None:
+            text = self._pending_paste_text
+            self._pending_paste_text = None
+            try:
+                shell = self.query_one("#shell-pane", ShellPane)
+                shell._pty.write(b"\x1b[200~" + text.encode("utf-8") + b"\x1b[201~")
+                self._toast(f"Pasted {len(text)} chars.")
+            except NoMatches:
+                pass
+            return
+
         try:
             import subprocess
 
@@ -1052,17 +1155,39 @@ class RidinCLIgunApp(App):
                 timeout=2,
             )
             text = result.stdout.decode("utf-8", errors="replace")
-            if text:
-                shell = self.query_one("#shell-pane", ShellPane)
-                # Use bracketed paste mode to safely handle multi-line content
-                shell._pty.write(b"\x1b[200~" + text.encode("utf-8") + b"\x1b[201~")
-                self._show_advisory_notice(f"Pasted {len(text)} chars.")
-            else:
-                self._show_advisory_notice("Clipboard is empty.")
+            if not text:
+                self._toast("Clipboard is empty.")
+                return
+
+            # Check for secrets in clipboard content (if enabled)
+            secret_result = detect_secrets(text) if self.config.clipboard_safety else None
+            if secret_result and secret_result.has_secrets:
+                self._pending_paste_text = text
+                kinds = ", ".join(dict.fromkeys(m.kind for m in secret_result.matches))
+                self._show_advisory_notice(
+                    "🔒 Secrets detected in clipboard\n\n"
+                    f"Found: {kinds}\n\n"
+                    "Press V to paste anyway,\n"
+                    "any other key to cancel."
+                )
+                return
+
+            # No secrets — paste directly
+            shell = self.query_one("#shell-pane", ShellPane)
+            shell._pty.write(b"\x1b[200~" + text.encode("utf-8") + b"\x1b[201~")
+            self._toast(f"Pasted {len(text)} chars.")
         except NoMatches:
             pass
         except Exception as e:
-            self._show_advisory_notice(f"Paste failed: {e}")
+            self._toast(f"Paste failed: {e}", severity="error")
+
+    # ── Settings ──────────────────────────────────────────────────
+
+    def _open_settings(self) -> None:
+        """Open the settings modal screen."""
+        from ridincligun.ui.settings_screen import SettingsScreen
+
+        self.push_screen(SettingsScreen(self.config))
 
     # ── Debug display ────────────────────────────────────────────
 
@@ -1232,6 +1357,14 @@ class RidinCLIgunApp(App):
         except NoMatches:
             pass
 
+    def _toast(self, message: str, *, severity: str = "information") -> None:
+        """Show a brief, non-blocking toast notification.
+
+        Use this for transient feedback (copy confirm, mode toggles, etc.)
+        that must NOT replace advisory pane content.
+        """
+        self.notify(message, severity=severity, timeout=3)  # type: ignore[arg-type]
+
     def _show_advisory_notice(self, message: str) -> None:
         """Show a brief notice in the advisory pane. First line bold, rest dim."""
         self._help_showing = False
@@ -1272,13 +1405,14 @@ class RidinCLIgunApp(App):
                 ("  Ctrl+G, ?      show cmd --help", ""),
                 ("  Ctrl+G, A      toggle AI on/off", ""),
                 ("  Ctrl+G, M      model selection", ""),
+                ("  Ctrl+G, G      settings", ""),
                 ("  Ctrl+G, S      toggle Secret mode", ""),
                 ("  Ctrl+G, H      this help", ""),
                 ("  Ctrl+G, X      restart shell", ""),
                 ("  Ctrl+G, D      debug info", ""),
                 ("  Ctrl+G, Q      quit (fallback)", ""),
                 ("", ""),
-                ("  Press any key to dismiss.", "dim"),
+                ("  Escape to dismiss.", "dim"),
             ])
         except NoMatches:
             pass
@@ -1311,6 +1445,33 @@ class RidinCLIgunApp(App):
                 lines.append((f"  💡 {warning.suggestion}", "dim green"))
                 lines.append(("", ""))
 
+        try:
+            advisory = self.query_one("#advisory-pane", AdvisoryPane)
+            advisory.set_content(lines)
+        except NoMatches:
+            pass
+
+    def _show_onboarding(self) -> None:
+        """Show first-run onboarding content in the advisory pane."""
+        lines: list[tuple[str, str]] = [
+            ("", ""),
+            ("  Welcome to ridinCLIgun", "bold cyan"),
+            ("", ""),
+            ("  Your shell companion.", "dim"),
+            ("  Advises, never acts.", "dim"),
+            ("", ""),
+            ("  Key shortcuts:", "bold"),
+            ("  Ctrl+G, R   AI review", ""),
+            ("  Ctrl+G, ?   command help", ""),
+            ("  Ctrl+G, G   settings", ""),
+            ("  Ctrl+G, H   all shortcuts", ""),
+            ("", ""),
+            ("  Set up AI:", "bold"),
+            ("  Ctrl+G, G → Providers", "dim"),
+            ("  to add your API key.", "dim"),
+            ("", ""),
+            ("  Start typing to begin.", "dim green"),
+        ]
         try:
             advisory = self.query_one("#advisory-pane", AdvisoryPane)
             advisory.set_content(lines)

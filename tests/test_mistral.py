@@ -2,10 +2,8 @@
 
 import asyncio
 
-import pytest
-
-from ridincligun.provider.mistral import MistralAdapter, _parse_response
 from ridincligun.provider.manager import ProviderManager
+from ridincligun.provider.mistral import MistralAdapter, _parse_response
 
 
 def test_mistral_adapter_not_configured():
@@ -64,8 +62,8 @@ def test_mistral_manager_unconfigured():
 
 # ── Factory tests ───────────────────────────────────────────────
 
-from ridincligun.config import Config, ProviderSettings
-from ridincligun.provider import create_provider
+from ridincligun.config import Config, ProviderSettings  # noqa: E402
+from ridincligun.provider import create_provider  # noqa: E402
 
 
 def test_factory_creates_mistral():

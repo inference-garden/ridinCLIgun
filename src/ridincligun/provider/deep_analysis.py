@@ -133,7 +133,7 @@ async def fetch_script(url: str) -> FetchResult:
         )
 
         def _do_fetch() -> tuple[bytes, str]:
-            with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT) as resp:
+            with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT) as resp:  # nosec B310
                 content_type = resp.headers.get("Content-Type", "")
                 data = resp.read(_MAX_SCRIPT_SIZE + 1)
                 return data, content_type

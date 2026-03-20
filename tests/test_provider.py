@@ -23,6 +23,13 @@ def test_system_prompt_has_format():
     assert "SUGGESTION:" in SYSTEM_PROMPT
 
 
+def test_system_prompt_has_secret_leak_instruction():
+    """System prompt instructs the AI to flag real secrets that slip past filters."""
+    assert "API key" in SYSTEM_PROMPT
+    assert "rotate" in SYSTEM_PROMPT
+    assert "not a placeholder" in SYSTEM_PROMPT
+
+
 def test_build_review_prompt():
     """Review prompt includes the command (sanitized)."""
     prompt = build_review_prompt("rm -rf /tmp/old")
@@ -172,9 +179,50 @@ def test_manager_properties():
     assert manager.is_configured
 
 
+def test_manager_sanitizes_provider_error():
+    """ProviderError details must not leak to user — generic message only."""
+    from unittest.mock import AsyncMock, MagicMock  # noqa: I001
+
+    from ridincligun.provider.base import ProviderError
+
+    mock_adapter = MagicMock()
+    mock_adapter.is_configured = True
+    mock_adapter.name = "mock"
+    mock_adapter.review_command = AsyncMock(
+        side_effect=ProviderError("401 Unauthorized: Bearer sk-ant-api03-LEAKED-KEY")
+    )
+    manager = ProviderManager(mock_adapter)
+    result = asyncio.run(manager.review("ls"))
+    assert not result.success
+    assert "sk-ant" not in result.error_message
+    assert "401" not in result.error_message
+    assert "failed" in result.error_message.lower()
+
+
+def test_manager_sanitizes_unexpected_error():
+    """Unexpected exceptions must not leak raw details to user."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    mock_adapter = MagicMock()
+    mock_adapter.is_configured = True
+    mock_adapter.name = "mock"
+    mock_adapter.review_command = AsyncMock(
+        side_effect=RuntimeError(
+            "Connection to https://api.anthropic.com failed: org_id=org-abc123"
+        )
+    )
+    manager = ProviderManager(mock_adapter)
+    result = asyncio.run(manager.review("ls"))
+    assert not result.success
+    assert "org-abc123" not in result.error_message
+    assert "anthropic.com" not in result.error_message
+    assert "failed" in result.error_message.lower()
+
+
 # ── OpenAI adapter tests ─────────────────────────────────────────
 
-from ridincligun.provider.openai import OpenAIAdapter, _parse_response as _openai_parse
+from ridincligun.provider.openai import OpenAIAdapter  # noqa: E402
+from ridincligun.provider.openai import _parse_response as _openai_parse  # noqa: E402
 
 
 def test_openai_adapter_not_configured():
@@ -233,8 +281,8 @@ def test_openai_manager_unconfigured():
 
 # ── Provider factory tests ───────────────────────────────────────
 
-from ridincligun.config import Config, ProviderSettings
-from ridincligun.provider import create_provider
+from ridincligun.config import Config, ProviderSettings  # noqa: E402
+from ridincligun.provider import create_provider  # noqa: E402
 
 
 def test_factory_creates_anthropic_by_default():

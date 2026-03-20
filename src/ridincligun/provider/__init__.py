@@ -19,7 +19,7 @@ def create_provider(config: Config) -> ProviderManager:
     kind = config.provider.kind.lower()
 
     # Resolve the appropriate API key for the provider
-    _KEY_ENV = {
+    _KEY_ENV = {  # noqa: N806
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
         "mistral": "MISTRAL_API_KEY",

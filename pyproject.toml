@@ -55,6 +55,10 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
+[tool.bandit]
+# This is a terminal/shell TUI app — subprocess usage is core functionality.
+skips = ["B404", "B603", "B604", "B607"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
