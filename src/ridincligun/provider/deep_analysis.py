@@ -95,8 +95,39 @@ def _clean_url(url: str) -> str:
 
 # ── Script fetching ────────────────────────────────────────────────
 
-_MAX_SCRIPT_SIZE = 65_536  # 64KB max
-_FETCH_TIMEOUT = 5.0  # seconds
+_MAX_SCRIPT_SIZE = 1_048_576  # 1MB max fetch size
+_FETCH_TIMEOUT = 15.0  # seconds (larger scripts need more time)
+
+# ── Model context limits (input tokens) ──────────────────────────
+# Conservative estimates leaving room for system prompt + response.
+# Values are *usable input tokens* after reserving ~2K for prompt overhead
+# and ~1K for response tokens.
+
+_MODEL_CONTEXT_LIMITS: dict[str, int] = {
+    # Anthropic
+    "claude-opus-4": 195_000,
+    "claude-sonnet-4": 195_000,
+    "claude-haiku-4": 195_000,
+    "claude-3-5-sonnet": 195_000,
+    "claude-3-5-haiku": 195_000,
+    "claude-3-opus": 195_000,
+    "claude-3-sonnet": 195_000,
+    "claude-3-haiku": 195_000,
+    # OpenAI
+    "gpt-4o": 124_000,
+    "gpt-4o-mini": 124_000,
+    "gpt-4-turbo": 124_000,
+    "gpt-4": 6_000,
+    "o1": 195_000,
+    "o3": 195_000,
+    # Mistral
+    "mistral-large": 124_000,
+    "mistral-small": 30_000,
+    "mistral-medium": 30_000,
+}
+
+_DEFAULT_CONTEXT_LIMIT = 30_000  # Conservative fallback for unknown models
+_CHARS_PER_TOKEN = 4  # Rough estimate for token counting
 
 
 @dataclass(frozen=True)
@@ -115,8 +146,8 @@ async def fetch_script(url: str) -> FetchResult:
     """Fetch a remote script with safety limits.
 
     - Only HTTP/HTTPS
-    - Max 64KB
-    - 5s timeout
+    - Max 1MB (context-window fitting happens separately)
+    - 15s timeout
     - Never executes content
     """
     import asyncio
@@ -195,10 +226,56 @@ CONCERNS: <security concerns, or "None">
 """
 
 
-def build_deep_analysis_prompt(url: str, script_content: str, truncated: bool = False) -> str:
+def _get_context_limit(model_name: str) -> int:
+    """Look up the usable context-window size for a model.
+
+    Matches by prefix so that versioned model IDs (e.g.
+    ``claude-sonnet-4-20250514``) resolve to their family limit.
+    """
+    if not model_name:
+        return _DEFAULT_CONTEXT_LIMIT
+    lower = model_name.lower()
+    for prefix, limit in _MODEL_CONTEXT_LIMITS.items():
+        if lower.startswith(prefix):
+            return limit
+    return _DEFAULT_CONTEXT_LIMIT
+
+
+def fit_script_to_context(
+    script_content: str,
+    model_name: str = "",
+) -> tuple[str, bool]:
+    """Trim script content to fit the model's context window if necessary.
+
+    Returns ``(content, was_truncated)``.
+    In practice, scripts under ~500KB fit all major models.
+    """
+    limit_tokens = _get_context_limit(model_name)
+    # Reserve tokens for the system prompt (~800) + user prompt framing (~200)
+    # + desired response (~1000)
+    available_tokens = limit_tokens - 2_000
+    max_chars = available_tokens * _CHARS_PER_TOKEN
+
+    if len(script_content) <= max_chars:
+        return script_content, False
+
+    return script_content[:max_chars], True
+
+
+def build_deep_analysis_prompt(
+    url: str,
+    script_content: str,
+    truncated: bool = False,
+) -> str:
     """Build the prompt for deep script analysis."""
     parts = [f"Analyze this script downloaded from: {url}\n"]
     if truncated:
-        parts.append("(Script was truncated at 64KB — analysis may be incomplete)\n")
+        parts.append(
+            "IMPORTANT: This script was truncated to fit the analysis window. "
+            "You are seeing only the first part. Your analysis is INCOMPLETE. "
+            "State this clearly in your SUMMARY (e.g. 'Partial analysis — "
+            "script truncated'). Flag in CONCERNS that unreviewed code may "
+            "contain additional actions.\n"
+        )
     parts.append(f"```\n{script_content}\n```")
     return "\n".join(parts)
