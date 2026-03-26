@@ -25,8 +25,14 @@ import pyte
 _PROMPT_PATTERNS: list[re.Pattern[str]] = [
     # user@host:path$ or user@host path%
     re.compile(r"^[\w.-]+@[\w.-]+[:\s][^\$#%>]*[\$#%>]\s*"),
-    # oh-my-zsh themes: arrow/symbol prefix + path, e.g. "➜  ~/project"
-    re.compile(r"^[➜→›❯▶][^\$#%>]*[\$#%>]?\s*"),
+    # Bare arrow/symbol prompt (Starship ❯, oh-my-zsh ➜): just symbol + whitespace.
+    # Handles two-line Starship prompts where ❯ starts the command line.
+    re.compile(r"^[➜→›❯▶]\s+"),
+    # Starship info line ending with arrow (two-line prompt, e.g. "...v3.14.3❯")
+    # The entire line is prompt — strip it completely.
+    re.compile(r"^.*[➜→›❯▶]\s*$"),
+    # oh-my-zsh themes: arrow/symbol prefix + path + terminator, e.g. "➜  ~/project $"
+    re.compile(r"^[➜→›❯▶][^\$#%>]+[\$#%>]\s*"),
     # Starship / powerline: complex unicode then $ or %
     re.compile(r"^.*?[\$#%>]\s+"),
     # ~/path $ or /path %

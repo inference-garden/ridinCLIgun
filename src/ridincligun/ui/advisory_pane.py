@@ -68,6 +68,12 @@ class AdvisoryPane(Widget, can_focus=True):
         self._rewrap()
         self.refresh()
 
+    def remove_lines_containing(self, marker: str) -> None:
+        """Remove all raw lines whose text contains the given marker."""
+        self._raw_lines = [(t, s) for t, s in self._raw_lines if marker not in t]
+        self._rewrap()
+        self.refresh()
+
     def clear(self) -> None:
         """Reset to welcome message."""
         self._set_welcome()

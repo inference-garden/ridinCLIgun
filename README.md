@@ -22,6 +22,8 @@ Add an AI backend and it becomes a second pair of eyes: reviewing pipelines, exp
 
 **You drive. It rides shotgun.**
 
+ridinCLIgun is a split-terminal TUI for terminal safety and CLI security. It helps catch dangerous commands, review shell pipelines, and make command-line work safer without taking control away from the user.
+
 ## What it does
 
 - **Instant local warnings** — offline regex catalog catches dangerous patterns before you hit Enter
@@ -172,6 +174,9 @@ pip install -e ".[dev]"
 pytest tests/ -v
 ruff check src/
 ```
+
+## Keywords
+terminal safety, CLI safety, shell safety, command review, dangerous commands, terminal copilot, split-terminal TUI, pipe inspection
 
 ## License
 
