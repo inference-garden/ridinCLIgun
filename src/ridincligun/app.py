@@ -24,8 +24,9 @@ from ridincligun.provider.deep_analysis import (
     build_deep_analysis_prompt,
     check_deep_analysis_trigger,
     fetch_script,
+    fit_script_to_context,
 )
-from ridincligun.provider.prompt import get_redaction_diff
+from ridincligun.provider.prompt import build_system_prompt, get_redaction_diff, resolve_category
 from ridincligun.shell.input_parser import extract_current_command
 from ridincligun.shortcuts.bindings import LeaderAction, LeaderState
 from ridincligun.state import AppState, Phase
@@ -435,6 +436,12 @@ class RidinCLIgunApp(App):
         # Increment generation so stale responses are discarded
         self._review_generation += 1
 
+        # Resolve prompt category from local engine's matched families
+        result = self._engine.analyze(command)
+        family_ids = [w.family for w in result.warnings]
+        category = resolve_category(family_ids)
+        system_prompt = build_system_prompt(category, self.config.review_mode)
+
         # Show loading state and clear any previous error status
         self.state.phase = Phase.REVIEW_LOADING
         self._update_ai_status("")
@@ -445,9 +452,13 @@ class RidinCLIgunApp(App):
 
         # Launch async review with current generation
         gen = self._review_generation
-        self._review_task = asyncio.create_task(self._do_ai_review(command, gen))
+        self._review_task = asyncio.create_task(
+            self._do_ai_review(command, gen, system_prompt)
+        )
 
-    async def _do_ai_review(self, command: str, generation: int = 0) -> None:
+    async def _do_ai_review(
+        self, command: str, generation: int = 0, system_prompt: str = "",
+    ) -> None:
         """Perform the AI review asynchronously (Layer 2).
 
         After showing the review, checks if the command triggers deep
@@ -459,8 +470,9 @@ class RidinCLIgunApp(App):
                         when the response arrives, the result is stale
                         (secret mode was toggled or a new review started)
                         and must be discarded without rendering.
+            system_prompt: Composed system prompt (base + category + mode).
         """
-        result = await self._provider.review(command)
+        result = await self._provider.review(command, system_prompt=system_prompt)
 
         # Defense in depth: suppress result if generation changed
         # (secret mode toggled or new review started during flight)
@@ -499,6 +511,9 @@ class RidinCLIgunApp(App):
         # Fetch the script
         result = await fetch_script(trigger.url)
 
+        # Remove "fetching" status line
+        self._remove_advisory_lines("Fetching script content")
+
         if self.state.secret_mode:
             return  # Suppressed
 
@@ -513,17 +528,22 @@ class RidinCLIgunApp(App):
             ])
             return
 
+        # Fit script to model's context window
+        model_name = self._provider.model_id if self._provider else ""
+        content, was_truncated = fit_script_to_context(
+            result.content, model_name,
+        )
+
         # Show script size, then send to AI
         size_info = f"{result.size_bytes:,} bytes"
         lines: list[tuple[str, str]] = [
             ("", ""),
             (f"  📄 Script fetched: {size_info}", "cyan"),
         ]
-        if result.truncated:
+        if was_truncated:
             lines.extend([
-                ("  ⚠ Script truncated at 64KB", "bold yellow"),
-                ("  Analysis may be incomplete — large scripts", "dim yellow"),
-                ("  could contain hidden actions after this point.", "dim yellow"),
+                ("  ⚠ Script too large for model context", "bold yellow"),
+                ("  Partial analysis — some code not reviewed.", "dim yellow"),
             ])
         lines.append(("  Analyzing content...", "bold cyan"))
 
@@ -531,12 +551,15 @@ class RidinCLIgunApp(App):
 
         # Build deep analysis prompt and send to provider
         prompt = build_deep_analysis_prompt(
-            trigger.url, result.content, result.truncated
+            trigger.url, content, was_truncated,
         )
         analysis = await self._provider.review(
             prompt,
             context="deep_script_analysis",
         )
+
+        # Remove "analyzing" status line
+        self._remove_advisory_lines("Analyzing content")
 
         if self.state.secret_mode:
             return
@@ -557,6 +580,15 @@ class RidinCLIgunApp(App):
             if analysis.response.suggestion:
                 self._append_advisory_lines([
                     (f"  💡 {analysis.response.suggestion}", "dim green"),
+                    ("", ""),
+                ])
+            if was_truncated:
+                self._append_advisory_lines([
+                    ("  ⚠ PARTIAL ANALYSIS", "bold yellow"),
+                    ("  Script exceeded model context window.", "dim yellow"),
+                    ("  Unreviewed code may contain", "dim yellow"),
+                    ("  additional actions. Inspect the", "dim yellow"),
+                    ("  full script manually before running.", "dim yellow"),
                     ("", ""),
                 ])
         else:
@@ -1354,6 +1386,14 @@ class RidinCLIgunApp(App):
         try:
             advisory = self.query_one("#advisory-pane", AdvisoryPane)
             advisory.append_content(lines)
+        except NoMatches:
+            pass
+
+    def _remove_advisory_lines(self, marker: str) -> None:
+        """Remove advisory lines containing the given marker text."""
+        try:
+            advisory = self.query_one("#advisory-pane", AdvisoryPane)
+            advisory.remove_lines_containing(marker)
         except NoMatches:
             pass
 

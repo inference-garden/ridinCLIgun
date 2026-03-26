@@ -51,10 +51,16 @@ class ProviderManager:
         return self._adapter.name
 
     @property
+    def model_id(self) -> str:
+        return self._adapter.model_id
+
+    @property
     def is_configured(self) -> bool:
         return self._adapter.is_configured
 
-    async def review(self, command: str, context: str = "") -> ReviewStatus:
+    async def review(
+        self, command: str, context: str = "", system_prompt: str = "",
+    ) -> ReviewStatus:
         """Request an AI review with timeout and error handling.
 
         Always returns a ReviewStatus — never raises.
@@ -68,7 +74,7 @@ class ProviderManager:
 
         try:
             response = await asyncio.wait_for(
-                self._adapter.review_command(command, context),
+                self._adapter.review_command(command, context, system_prompt),
                 timeout=self._timeout,
             )
             return ReviewStatus(

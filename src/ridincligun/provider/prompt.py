@@ -2,24 +2,33 @@
 
 Keeps all prompt engineering in one place — easy to tune without
 touching adapter or manager code.
+
+The system prompt is composed from three layers:
+1. BASE_SYSTEM_PROMPT — always included, defines role + response format
+2. Category supplement — domain-specific hints based on matched command families
+3. Mode supplement — tone/audience adjustment (default, explorer)
+
+Templates are loaded from data/prompt_templates.toml at import time.
 """
 
 from __future__ import annotations
 
 import re
+import tomllib
 from dataclasses import dataclass
+from importlib import resources
+from pathlib import Path
 
-SYSTEM_PROMPT = """\
+# ── Base system prompt (always included) ─────────────────────────
+
+_BASE_SYSTEM_PROMPT = """\
 You are a technical shell command reviewer in a developer tool called ridinCLIgun.
 
 Your job: classify shell commands by risk and explain them factually.
 
 Rules:
 - You only describe and classify. You never execute anything.
-- Use clinical, neutral language. No dramatic descriptions of consequences.
 - Classify risk as: "safe", "caution", "warning", or "danger".
-- For dangerous commands, state the risk factually (e.g. "affects system-wide paths")
-  without graphic detail about outcomes.
 - Suggest safer alternatives when applicable. For non-safe commands, provide
   a concrete safer alternative command that achieves a similar goal.
 - Keep responses short — displayed in a narrow side panel.
@@ -32,9 +41,100 @@ Rules:
 Response format (use exactly these headers):
 RISK: <safe|caution|warning|danger>
 SUMMARY: <one-line factual description>
-EXPLANATION: <why this risk level, 1-3 short sentences, clinical tone>
+EXPLANATION: <why this risk level, 1-3 short sentences>
 SUGGESTION: <a concrete safer/better command, or "None" if the command is already safe>
+
+Before responding, verify internally:
+1. Warnings are specific to the actual flags/arguments passed — not generic.
+2. Risk level matches the real danger — do not over-warn safe commands.
+3. No unnecessary explanations — be concise.
 """
+
+# ── Template loading ─────────────────────────────────────────────
+
+_TEMPLATES: dict = {}
+
+
+def _load_templates() -> dict:
+    """Load prompt_templates.toml from the data directory."""
+    # Try installed package data first, then repo layout
+    try:
+        data_ref = resources.files("ridincligun") / "data" / "prompt_templates.toml"
+        raw = data_ref.read_bytes()
+    except (FileNotFoundError, TypeError):
+        repo_path = Path(__file__).resolve().parents[3] / "data" / "prompt_templates.toml"
+        raw = repo_path.read_bytes()
+    return tomllib.loads(raw.decode("utf-8"))
+
+
+def _get_templates() -> dict:
+    """Return cached templates, loading on first access."""
+    global _TEMPLATES
+    if not _TEMPLATES:
+        _TEMPLATES = _load_templates()
+    return _TEMPLATES
+
+
+# ── Category resolution ──────────────────────────────────────────
+
+def resolve_category(family_ids: list[str]) -> str:
+    """Map matched command family IDs to a prompt category name.
+
+    Returns the first matching category, or "general" if no families matched.
+    """
+    if not family_ids:
+        return "general"
+
+    templates = _get_templates()
+    categories = templates.get("categories", {})
+
+    for cat_name, cat_data in categories.items():
+        if cat_name == "general":
+            continue
+        cat_families = cat_data.get("families", [])
+        for fid in family_ids:
+            if fid in cat_families:
+                return cat_name
+
+    return "general"
+
+
+# ── System prompt composition ────────────────────────────────────
+
+def build_system_prompt(
+    category: str = "general",
+    mode: str = "default",
+) -> str:
+    """Compose the full system prompt from base + category + mode.
+
+    Args:
+        category: Prompt category name (e.g. "file_ops", "network", "general").
+        mode: User mode (e.g. "default", "explorer").
+
+    Returns:
+        The assembled system prompt string.
+    """
+    templates = _get_templates()
+    parts = [_BASE_SYSTEM_PROMPT.rstrip()]
+
+    # Category supplement
+    cat_data = templates.get("categories", {}).get(category, {})
+    cat_supplement = cat_data.get("supplement", "").strip()
+    if cat_supplement:
+        parts.append(f"\nCategory-specific guidance:\n{cat_supplement}")
+
+    # Mode supplement
+    mode_data = templates.get("modes", {}).get(mode, {})
+    mode_supplement = mode_data.get("supplement", "").strip()
+    if mode_supplement:
+        parts.append(f"\nTone and audience:\n{mode_supplement}")
+
+    return "\n".join(parts)
+
+
+# Backward-compatible alias — adapters that haven't been updated yet
+# get the base prompt (general category, default mode).
+SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT
 
 # ── Command sanitization ──────────────────────────────────────────
 #

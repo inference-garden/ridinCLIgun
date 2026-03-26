@@ -30,6 +30,10 @@ class AnthropicAdapter(ProviderAdapter):
         return f"Anthropic {self._model}"
 
     @property
+    def model_id(self) -> str:
+        return self._model
+
+    @property
     def is_configured(self) -> bool:
         return bool(self._api_key)
 
@@ -50,6 +54,7 @@ class AnthropicAdapter(ProviderAdapter):
         self,
         command: str,
         context: str = "",
+        system_prompt: str = "",
     ) -> AIReviewResponse:
         """Send a command to Claude for review."""
         if not self.is_configured:
@@ -59,6 +64,7 @@ class AnthropicAdapter(ProviderAdapter):
             )
 
         user_message = build_review_prompt(command, context)
+        effective_prompt = system_prompt or SYSTEM_PROMPT
 
         try:
             client = self._get_client()
@@ -69,7 +75,7 @@ class AnthropicAdapter(ProviderAdapter):
                 client.messages.create,
                 model=self._model,
                 max_tokens=_MAX_TOKENS,
-                system=SYSTEM_PROMPT,
+                system=effective_prompt,
                 messages=[{"role": "user", "content": user_message}],
             )
         except Exception as e:

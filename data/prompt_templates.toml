@@ -1,0 +1,86 @@
+# Prompt category templates for ridinCLIgun v0.4
+#
+# Each category maps command families to a domain-specific AI supplement.
+# The supplement is appended to the base system prompt to steer the AI
+# toward actionable, category-aware advice.
+#
+# Modes control tone and audience independently of category.
+
+[meta]
+version = "0.4.0"
+
+# ── Categories ────────────────────────────────────────────────────
+
+[categories.file_ops]
+families = ["rm", "chmod", "mkfs", "disk_overwrite", "dd"]
+supplement = """
+Focus on: data loss risk, recoverability, safer alternatives.
+Always suggest a dry-run or preview flag if one exists (e.g. rm -i, chmod --changes).
+If recursive, warn about scope and suggest limiting the target path.
+Mention trash/backup as alternatives to permanent deletion when applicable.
+"""
+
+[categories.network]
+families = ["curl_pipe", "network", "ssh_and_keys", "iptables_firewall"]
+supplement = """
+Focus on: what gets exposed, to whom, over what channel.
+For piped downloads (curl|sh): suggest download-then-inspect workflow.
+For SSH operations: flag key permission issues and agent forwarding risks.
+For firewall changes: flag lockout risk and suggest testing rules before applying.
+Mention TLS/plaintext distinction when relevant.
+"""
+
+[categories.git]
+families = ["git_destructive"]
+supplement = """
+Focus on: history rewriting, upstream impact, team consequences.
+Mention reflog as a recovery mechanism for local operations.
+Distinguish local-only vs. pushed changes — pushed rewrites affect others.
+Suggest --dry-run or --no-push alternatives when available.
+"""
+
+[categories.package_system]
+families = ["package_managers", "system_files", "docker", "sudo"]
+supplement = """
+Focus on: privilege scope, system stability, supply chain trust.
+For sudo: clarify what runs as root and whether elevation is necessary.
+For package managers: flag unverified sources or --force/--no-verify flags.
+For Docker: flag privileged mode, host mounts, and network exposure.
+For system file edits: warn about boot/config breakage.
+"""
+
+[categories.secrets]
+families = ["env_secrets", "history_sensitive"]
+supplement = """
+Focus on: credential exposure surface and rotation urgency.
+Flag if secrets may land in shell history, logs, or process listings.
+Suggest secure alternatives (env files, secret managers, --from-file).
+If a credential appears in the command, advise immediate rotation.
+"""
+
+[categories.general]
+families = []
+supplement = ""
+
+# ── Modes ─────────────────────────────────────────────────────────
+
+[modes.default]
+label = "Default"
+supplement = ""
+
+[modes.explorer]
+label = "Explorer mode (for Kids)"
+supplement = """
+Explain like talking to a smart, curious 10-year-old who is learning the terminal.
+Use simple words and short sentences. Use everyday analogies:
+- files and folders = papers in a filing cabinet
+- permissions = locks and keys
+- root/sudo = the master key that opens everything
+- pipes = connecting tubes that pass water (data) from one tool to the next
+- network = sending a letter to another computer
+No jargon without a brief explanation in parentheses.
+Keep it encouraging — mistakes are how you learn.
+If something is dangerous, say so clearly but without scaring.
+When a command is safe, say something positive like "Good one!" or "This is a handy command."
+End with a short "Did you know?" fun fact about the command or concept when you can.
+"""

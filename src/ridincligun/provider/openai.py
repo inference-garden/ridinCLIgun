@@ -29,6 +29,10 @@ class OpenAIAdapter(ProviderAdapter):
         return f"OpenAI {self._model}"
 
     @property
+    def model_id(self) -> str:
+        return self._model
+
+    @property
     def is_configured(self) -> bool:
         return bool(self._api_key)
 
@@ -49,6 +53,7 @@ class OpenAIAdapter(ProviderAdapter):
         self,
         command: str,
         context: str = "",
+        system_prompt: str = "",
     ) -> AIReviewResponse:
         """Send a command to OpenAI for review."""
         if not self.is_configured:
@@ -58,6 +63,7 @@ class OpenAIAdapter(ProviderAdapter):
             )
 
         user_message = build_review_prompt(command, context)
+        effective_prompt = system_prompt or SYSTEM_PROMPT
 
         try:
             client = self._get_client()
@@ -68,7 +74,7 @@ class OpenAIAdapter(ProviderAdapter):
                 model=self._model,
                 max_tokens=_MAX_TOKENS,
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": effective_prompt},
                     {"role": "user", "content": user_message},
                 ],
             )

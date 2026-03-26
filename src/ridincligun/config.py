@@ -46,6 +46,9 @@ class Config:
     # API key — held in memory, never injected into os.environ (FINDING-02)
     api_key: str = ""
 
+    # Review mode — "default" or "explorer" (kid-friendly)
+    review_mode: str = "default"
+
     # Shell settings
     shell: str = ""  # empty = use $SHELL or /bin/zsh
 
@@ -99,6 +102,7 @@ def _ensure_config_dir(config_dir: Path) -> None:
             "\n"
             "[general]\n"
             "ai_enabled_default = false\n"
+            '# review_mode = "default"  # "default" or "explorer" (kid-friendly)\n'
             '# shell = "/bin/zsh"  # override default shell\n'
             "\n"
             "[provider]\n"
@@ -147,6 +151,10 @@ def load_config(config_dir: Path | None = None) -> Config:
             config.ai_enabled_default = bool(general["ai_enabled_default"])
         if "shell" in general:
             config.shell = str(general["shell"])
+        if "review_mode" in general:
+            mode = str(general["review_mode"]).lower()
+            if mode in ("default", "explorer"):
+                config.review_mode = mode
 
         # Provider settings
         provider_data = data.get("provider", {})

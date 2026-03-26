@@ -33,6 +33,11 @@ class ProviderAdapter(ABC):
 
     @property
     @abstractmethod
+    def model_id(self) -> str:
+        """Raw model identifier, e.g. 'claude-sonnet-4-20250514'."""
+
+    @property
+    @abstractmethod
     def is_configured(self) -> bool:
         """Whether the provider has valid credentials."""
 
@@ -41,12 +46,15 @@ class ProviderAdapter(ABC):
         self,
         command: str,
         context: str = "",
+        system_prompt: str = "",
     ) -> AIReviewResponse:
         """Send a command for AI review and return the structured response.
 
         Args:
             command: The shell command to review.
             context: Optional context (working directory, recent commands, etc.)
+            system_prompt: Composed system prompt (base + category + mode).
+                          If empty, the adapter falls back to the default.
 
         Raises:
             ProviderError: On any provider-specific failure.

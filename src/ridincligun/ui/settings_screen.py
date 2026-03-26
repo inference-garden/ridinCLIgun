@@ -1,6 +1,6 @@
 """Settings screen — modal overlay for configuration.
 
-Opens via Ctrl+G, G. Sections: AI, Privacy, Providers.
+Opens via Ctrl+G, G. Sections: AI, Privacy, Available API-Keys.
 Toggles read current values from config, write changes on toggle.
 Provider items allow entering API keys via masked input.
 """
@@ -19,6 +19,13 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
 
 from ridincligun.config import Config
+
+# Provider → environment variable name mapping
+# Available review modes — order determines cycle direction
+_REVIEW_MODES: list[tuple[str, str]] = [
+    ("default", "Default"),
+    ("explorer", "Explorer mode (for Kids)"),
+]
 
 # Provider → environment variable name mapping
 _PROVIDER_KEYS: list[tuple[str, str]] = [
@@ -164,6 +171,13 @@ class SettingsScreen(ModalScreen[None]):
         self._env_keys = _read_env_keys(config.env_file)
         self._items: list[dict] = self._build_items()
 
+    def _mode_label(self) -> str:
+        """Return the display label for the current review mode."""
+        for key, label in _REVIEW_MODES:
+            if key == self._config.review_mode:
+                return f"Review mode: {label}"
+        return f"Review mode: {self._config.review_mode}"
+
     def _build_items(self) -> list[dict]:
         """Build the settings item list from current config state."""
         items: list[dict] = [
@@ -187,6 +201,13 @@ class SettingsScreen(ModalScreen[None]):
                 "label": f"Model: {self._config.provider.model}",
                 "value": self._config.provider.model,
                 "type": "info",
+            },
+            {
+                "section": "AI",
+                "key": "review_mode",
+                "label": self._mode_label(),
+                "value": self._config.review_mode,
+                "type": "cycle",
             },
             {
                 "section": "Privacy",
@@ -218,7 +239,7 @@ class SettingsScreen(ModalScreen[None]):
                     status = "not configured"
 
             items.append({
-                "section": "Providers",
+                "section": "Available API-Keys",
                 "key": env_var,
                 "label": f"{provider_name}: {status}",
                 "value": env_var,
@@ -233,7 +254,7 @@ class SettingsScreen(ModalScreen[None]):
             yield Label("Settings", classes="settings-title")
             yield Static(id="settings-body")
             yield Label(
-                "↑↓ navigate  Space toggle  Enter edit key  Esc close",
+                "↑↓ navigate  Space toggle/cycle  Enter edit key\n\n  Press ESC to exit",
                 classes="settings-hint",
             )
 
@@ -256,6 +277,8 @@ class SettingsScreen(ModalScreen[None]):
             if item["type"] == "toggle":
                 indicator = "●" if item["value"] else "○"
                 label = f"{prefix}{indicator} {item['label']}"
+            elif item["type"] == "cycle":
+                label = f"{prefix}◆ {item['label']}"
             elif item["type"] == "provider":
                 label = f"{prefix}🔑 {item['label']}"
             else:
@@ -278,6 +301,8 @@ class SettingsScreen(ModalScreen[None]):
             item = self._items[self._cursor]
             if item["type"] == "toggle":
                 self._toggle_current()
+            elif item["type"] == "cycle":
+                self._cycle_current()
             elif item["type"] == "provider" and event.key == "enter":
                 self._prompt_api_key(item)
             event.stop()
@@ -300,6 +325,27 @@ class SettingsScreen(ModalScreen[None]):
 
         # Persist to config.toml
         self._persist_setting(item["key"], item["value"])
+
+        if self.is_mounted:
+            self._render_items()
+
+    def _cycle_current(self) -> None:
+        """Cycle a multi-value setting to the next option."""
+        item = self._items[self._cursor]
+        if item["type"] != "cycle":
+            return
+
+        if item["key"] == "review_mode":
+            mode_keys = [k for k, _ in _REVIEW_MODES]
+            current_idx = mode_keys.index(item["value"]) if item["value"] in mode_keys else 0
+            next_idx = (current_idx + 1) % len(mode_keys)
+            new_mode = mode_keys[next_idx]
+
+            item["value"] = new_mode
+            self._config.review_mode = new_mode
+            item["label"] = self._mode_label()
+
+            self._persist_string_setting("review_mode", new_mode)
 
         if self.is_mounted:
             self._render_items()
@@ -354,24 +400,39 @@ class SettingsScreen(ModalScreen[None]):
             pass
 
     def _persist_setting(self, key: str, value: bool) -> None:
-        """Write a setting change to config.toml."""
+        """Write a boolean setting change to config.toml."""
+        toml_value = "true" if value else "false"
+        self._persist_raw_setting(key, toml_value)
+
+    def _persist_string_setting(self, key: str, value: str) -> None:
+        """Write a string setting change to config.toml."""
+        self._persist_raw_setting(key, f'"{value}"')
+
+    def _persist_raw_setting(self, key: str, toml_value: str) -> None:
+        """Write a raw TOML value to config.toml under [general]."""
         config_file = self._config.config_file
         if not config_file.exists():
             return
 
         try:
             text = config_file.read_text()
-            toml_value = "true" if value else "false"
 
-            if _re.search(rf"^{key}\s*=", text, _re.MULTILINE):
+            if _re.search(rf"^#?\s*{key}\s*=", text, _re.MULTILINE):
                 text = _re.sub(
-                    rf"^{key}\s*=\s*\S+",
+                    rf"^#?\s*{key}\s*=\s*.*$",
                     f"{key} = {toml_value}",
                     text,
                     count=1,
                     flags=_re.MULTILINE,
                 )
-                config_file.write_text(text)
+            elif "[general]" in text:
+                text = text.replace(
+                    "[general]", f"[general]\n{key} = {toml_value}", 1,
+                )
+            else:
+                text += f"\n[general]\n{key} = {toml_value}\n"
+
+            config_file.write_text(text)
         except OSError:
             pass
 
