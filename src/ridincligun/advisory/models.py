@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Risk levels and warning models
+
 """Data models for the advisory system.
 
 Simple dataclasses — no logic, no side effects.

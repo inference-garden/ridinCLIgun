@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Advisory engine (local pattern matching)
+
 """Local advisory engine.
 
 Matches commands against the catalog. Synchronous, no network, no side effects.

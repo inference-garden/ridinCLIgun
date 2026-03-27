@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — TOML and .env configuration
+
 """Configuration loading for ridinCLIgun.
 
 Reads config.toml from ~/.config/ridincligun/ and .env for API secrets.

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Provider adapter base class
+
 """Abstract base for AI provider adapters.
 
 Each provider (Anthropic, OpenAI, Mistral, ...) implements this interface.

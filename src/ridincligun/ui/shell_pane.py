@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Shell pane widget
+
 """Shell pane widget for ridinCLIgun.
 
 Wraps a PTY process with pyte terminal emulation and renders into a Textual widget.

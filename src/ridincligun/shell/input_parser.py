@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Command extraction from terminal
+
 """Input parser — extracts the current command from the PTY screen buffer.
 
 This is inherently heuristic: we read the cursor line from the pyte screen

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Real-time secret detection
+
 """Real-time secret detection for shell input.
 
 Scans command text for likely secrets (API keys, passwords, tokens, credential

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Provider factory
+
 """Provider package — AI adapter factory and shared types."""
 
 from __future__ import annotations

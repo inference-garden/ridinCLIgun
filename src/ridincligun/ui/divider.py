@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Pane divider widget
+
 """Draggable divider widget between shell and advisory panes.
 
 A thin 1-character-wide vertical bar that can be dragged with the mouse

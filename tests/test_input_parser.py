@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Tests for command extraction
+
 """Tests for the input parser — command extraction from PTY screen buffer."""
 
 import pyte

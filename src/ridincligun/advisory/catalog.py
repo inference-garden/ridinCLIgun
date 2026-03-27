@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Pattern loader for command catalog
+
 """Command catalog loader.
 
 Loads the JSON catalog from disk and provides compiled regex patterns.

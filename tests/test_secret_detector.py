@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Tests for secret detection
+
 """Tests for the real-time secret detector."""
 
 import pytest

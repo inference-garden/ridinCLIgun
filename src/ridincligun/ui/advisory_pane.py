@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Advisory pane widget
+
 """Advisory pane widget for ridinCLIgun.
 
 Displays warnings, AI reviews, and status information in the right pane.

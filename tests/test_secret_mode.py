@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Tests for secret mode
+
 """Tests for secret mode guards — ensures no data leaks to AI when active."""
 
 import asyncio

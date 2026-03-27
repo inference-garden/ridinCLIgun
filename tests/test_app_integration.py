@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Tests for app integration
+
 """Integration tests for RidinCLIgunApp.
 
 Uses Textual's headless test mode — no real PTY or terminal needed.

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — OpenAI adapter
+
 """OpenAI adapter for ridinCLIgun.
 
 Uses the OpenAI Python SDK to send command review requests.

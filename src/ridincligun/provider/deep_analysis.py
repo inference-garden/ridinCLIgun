@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Remote script fetch and analysis
+
 """Deep analysis for commands that download and execute remote code.
 
 Layer 3 of the layered review system. When a command pipes a remote

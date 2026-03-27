@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Tests for advisory engine integration
+
 """Pytest tests for the advisory engine + command catalog."""
 
 import pytest

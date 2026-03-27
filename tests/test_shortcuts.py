@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Tests for keyboard shortcuts
+
 """Tests for the leader key state machine."""
 
 from ridincligun.shortcuts.bindings import LeaderAction, LeaderState

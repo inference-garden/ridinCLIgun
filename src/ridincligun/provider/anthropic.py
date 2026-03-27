@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Anthropic adapter
+
 """Anthropic Claude adapter for ridinCLIgun.
 
 Uses the Anthropic Python SDK to send command review requests.

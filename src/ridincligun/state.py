@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Application state and phase management
+
 """Application state for ridinCLIgun.
 
 Single source of truth. Widgets read this; only app.py mutates it.

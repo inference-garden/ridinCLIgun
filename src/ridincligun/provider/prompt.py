@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Prompt sanitization and templates
+
 """Prompt templates for AI command review.
 
 Keeps all prompt engineering in one place — easy to tune without

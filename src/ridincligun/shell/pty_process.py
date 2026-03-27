@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — PTY subprocess management
+
 """PTY process management for ridinCLIgun.
 
 Forks a real shell in a pseudo-terminal. Provides read/write/resize/stop.

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Status bar widget
+
 """Status bar widget for ridinCLIgun.
 
 Minimal tags at the bottom of the screen. Reads from AppState.

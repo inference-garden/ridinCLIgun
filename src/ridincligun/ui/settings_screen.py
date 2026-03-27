@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Settings screen
+
 """Settings screen — modal overlay for configuration.
 
 Opens via Ctrl+G, G. Sections: AI, Privacy, Available API-Keys.

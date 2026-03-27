@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Timeout and error handling
+
 """Provider manager — orchestrates AI review requests.
 
 Handles timeouts, error recovery, and graceful degradation.

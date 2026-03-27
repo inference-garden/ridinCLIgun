@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Command review history (JSONL)
+
 """Local review history for ridinCLIgun.
 
 Append-only JSONL log of commands, warnings, AI verdicts, and timestamps.

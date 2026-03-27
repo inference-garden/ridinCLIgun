@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Mistral adapter
+
 """Mistral AI adapter for ridinCLIgun.
 
 Uses the Mistral Python SDK to send command review requests.

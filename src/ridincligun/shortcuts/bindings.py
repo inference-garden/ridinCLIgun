@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Leader-key state and actions
+
 """Shortcut bindings for ridinCLIgun.
 
 Implements the Ctrl+G leader key state machine and all app-level key routing.

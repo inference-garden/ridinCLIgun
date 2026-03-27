@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Application coordinator
+
 """Main Textual application for ridinCLIgun.
 
 Composes the two-pane layout, owns AppState, and coordinates messages.

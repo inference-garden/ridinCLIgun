@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 inference-garden
+# ridinCLIgun — Tests for advisory engine
+
 """Test the advisory engine against the command catalog."""
 
 from ridincligun.advisory.engine import AdvisoryEngine
