@@ -20,6 +20,8 @@ from textual import events
 from textual.strip import Strip
 from textual.widget import Widget
 
+from ridincligun.i18n import t
+
 # Selection highlight style (same as shell pane for consistency)
 _SEL_STYLE = Style(color="white", bgcolor="#44475a")
 
@@ -49,12 +51,12 @@ class AdvisoryPane(Widget, can_focus=True):
         """Show the initial welcome message."""
         self._raw_lines = [
             ("", ""),
-            ("  ridinCLIgun", "bold cyan"),
+            (f"  {t('welcome.title')}", "bold cyan"),
             ("", ""),
-            ("  Your shell companion.", "dim"),
-            ("  Advises, never acts.", "dim"),
+            (f"  {t('welcome.tagline')}", "dim"),
+            (f"  {t('welcome.motto')}", "dim"),
             ("", ""),
-            ("  Ctrl+G → H  show help", "dim green"),
+            (f"  {t('welcome.help_hint')}", "dim green"),
         ]
         self._rewrap()
 
@@ -237,4 +239,4 @@ class AdvisoryPane(Widget, can_focus=True):
             else:
                 return Strip([Segment(padded, base_style)], width)
 
-        return Strip.blank(width)
+        return Strip.blank(width, Style())

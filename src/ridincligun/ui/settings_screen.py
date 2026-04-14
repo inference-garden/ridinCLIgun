@@ -23,13 +23,18 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
 
 from ridincligun.config import Config
+from ridincligun.i18n import available_locales, get_locale, reload_locale, set_locale, t
+
+# Available languages — display names (always in their own language)
+_LANGUAGE_DISPLAY: dict[str, str] = {
+    "en": "English",
+    "de": "Deutsch",
+    "fr": "Français",
+}
 
 # Provider → environment variable name mapping
 # Available review modes — order determines cycle direction
-_REVIEW_MODES: list[tuple[str, str]] = [
-    ("default", "Default"),
-    ("explorer", "Explorer mode (for Kids)"),
-]
+_REVIEW_MODE_KEYS: list[str] = ["default", "explorer"]
 
 # Provider → environment variable name mapping
 _PROVIDER_KEYS: list[tuple[str, str]] = [
@@ -105,17 +110,17 @@ class ApiKeyInputScreen(ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="key-input-container"):
             yield Label(
-                f"Enter API key for {self._provider_name}",
+                t("settings.key_input_title", provider=self._provider_name),
                 classes="key-input-title",
             )
             yield Label(f"  {self._env_var}", classes="key-input-hint")
             yield Input(
-                placeholder="Paste your API key here...",
+                placeholder=t("settings.key_input_placeholder"),
                 password=True,
                 id="key-input",
             )
             yield Label(
-                "Enter to save  Escape to cancel",
+                t("settings.key_input_hint"),
                 classes="key-input-hint",
             )
 
@@ -134,7 +139,7 @@ class ApiKeyInputScreen(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class SettingsScreen(ModalScreen[None]):
+class SettingsScreen(ModalScreen[str | None]):
     """Modal settings overlay with section-based toggles."""
 
     BINDINGS = [
@@ -177,53 +182,62 @@ class SettingsScreen(ModalScreen[None]):
 
     def _mode_label(self) -> str:
         """Return the display label for the current review mode."""
-        for key, label in _REVIEW_MODES:
-            if key == self._config.review_mode:
-                return f"Review mode: {label}"
-        return f"Review mode: {self._config.review_mode}"
+        mode_display = t(f"modes.{self._config.review_mode}")
+        return t("settings.review_mode_label", mode=mode_display)
 
     def _build_items(self) -> list[dict]:
         """Build the settings item list from current config state."""
+        current_lang = get_locale()
+        lang_display = _LANGUAGE_DISPLAY.get(current_lang, current_lang)
         items: list[dict] = [
             {
-                "section": "AI",
+                "section": t("settings.section_general"),
+                "key": "language",
+                "label": t("settings.language_label", language=lang_display),
+                "value": current_lang,
+                "type": "cycle",
+            },
+            {
+                "section": t("settings.section_ai"),
                 "key": "ai_enabled_default",
-                "label": "AI enabled at startup",
+                "label": t("settings.ai_enabled"),
                 "value": self._config.ai_enabled_default,
                 "type": "toggle",
             },
             {
-                "section": "AI",
+                "section": t("settings.section_ai"),
                 "key": "provider_kind",
-                "label": f"Provider: {self._config.provider.kind}",
+                "label": t("settings.provider_label", provider=self._config.provider.kind),
                 "value": self._config.provider.kind,
-                "type": "info",
+                "type": "action",
+                "action": "model_select",
             },
             {
-                "section": "AI",
+                "section": t("settings.section_ai"),
                 "key": "model",
-                "label": f"Model: {self._config.provider.model}",
+                "label": t("settings.model_label", model=self._config.provider.model),
                 "value": self._config.provider.model,
-                "type": "info",
+                "type": "action",
+                "action": "model_select",
             },
             {
-                "section": "AI",
+                "section": t("settings.section_ai"),
                 "key": "review_mode",
                 "label": self._mode_label(),
                 "value": self._config.review_mode,
                 "type": "cycle",
             },
             {
-                "section": "Privacy",
+                "section": t("settings.section_privacy"),
                 "key": "show_redaction_preview",
-                "label": "Show redaction preview before AI review",
+                "label": t("settings.redaction_preview"),
                 "value": self._config.show_redaction_preview,
                 "type": "toggle",
             },
             {
-                "section": "Privacy",
+                "section": t("settings.section_privacy"),
                 "key": "clipboard_safety",
-                "label": "Warn before pasting secrets",
+                "label": t("settings.clipboard_safety"),
                 "value": self._config.clipboard_safety,
                 "type": "toggle",
             },
@@ -233,17 +247,17 @@ class SettingsScreen(ModalScreen[None]):
         for provider_name, env_var in _PROVIDER_KEYS:
             key_val = self._env_keys.get(env_var, "")
             if key_val:
-                status = f"configured (...{key_val[-4:]})"
+                status = t("settings.key_configured", suffix=key_val[-4:])
             else:
                 # Also check os.environ as fallback
                 env_val = os.environ.get(env_var, "")
                 if env_val:
-                    status = f"from env (...{env_val[-4:]})"
+                    status = t("settings.key_from_env", suffix=env_val[-4:])
                 else:
-                    status = "not configured"
+                    status = t("settings.key_not_configured")
 
             items.append({
-                "section": "Available API-Keys",
+                "section": t("settings.section_keys"),
                 "key": env_var,
                 "label": f"{provider_name}: {status}",
                 "value": env_var,
@@ -255,10 +269,10 @@ class SettingsScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="settings-container"):
-            yield Label("Settings", classes="settings-title")
+            yield Label(t("settings.title"), classes="settings-title")
             yield Static(id="settings-body")
             yield Label(
-                "↑↓ navigate  Space toggle/cycle  Enter edit key\n\n  Press ESC to exit",
+                t("settings.hint"),
                 classes="settings-hint",
             )
 
@@ -284,7 +298,9 @@ class SettingsScreen(ModalScreen[None]):
             elif item["type"] == "cycle":
                 label = f"{prefix}◆ {item['label']}"
             elif item["type"] == "provider":
-                label = f"{prefix}🔑 {item['label']}"
+                label = f"{prefix}* {item['label']}"
+            elif item["type"] == "action":
+                label = f"{prefix}↵ {item['label']}"
             else:
                 label = f"{prefix}  {item['label']}"
 
@@ -309,6 +325,8 @@ class SettingsScreen(ModalScreen[None]):
                 self._cycle_current()
             elif item["type"] == "provider" and event.key == "enter":
                 self._prompt_api_key(item)
+            elif item["type"] == "action" and event.key == "enter":
+                self.dismiss(item.get("action"))
             event.stop()
 
     def _toggle_current(self) -> None:
@@ -339,11 +357,30 @@ class SettingsScreen(ModalScreen[None]):
         if item["type"] != "cycle":
             return
 
-        if item["key"] == "review_mode":
-            mode_keys = [k for k, _ in _REVIEW_MODES]
-            current_idx = mode_keys.index(item["value"]) if item["value"] in mode_keys else 0
-            next_idx = (current_idx + 1) % len(mode_keys)
-            new_mode = mode_keys[next_idx]
+        if item["key"] == "language":
+            locales = available_locales()
+            current_idx = locales.index(item["value"]) if item["value"] in locales else 0
+            next_idx = (current_idx + 1) % len(locales)
+            new_lang = locales[next_idx]
+
+            item["value"] = new_lang
+            self._config.language = new_lang
+            set_locale(new_lang)
+            reload_locale()
+
+            self._persist_string_setting("language", new_lang)
+
+            # Rebuild all items to reflect translated labels
+            self._items = self._build_items()
+
+        elif item["key"] == "review_mode":
+            current_idx = (
+                _REVIEW_MODE_KEYS.index(item["value"])
+                if item["value"] in _REVIEW_MODE_KEYS
+                else 0
+            )
+            next_idx = (current_idx + 1) % len(_REVIEW_MODE_KEYS)
+            new_mode = _REVIEW_MODE_KEYS[next_idx]
 
             item["value"] = new_mode
             self._config.review_mode = new_mode
@@ -441,5 +478,5 @@ class SettingsScreen(ModalScreen[None]):
             pass
 
     def action_dismiss_settings(self) -> None:
-        """Close the settings screen."""
+        """Close the settings screen (no action)."""
         self.dismiss(None)

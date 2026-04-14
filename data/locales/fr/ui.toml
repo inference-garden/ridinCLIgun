@@ -1,0 +1,272 @@
+# ridinCLIgun — French / Français UI strings
+# All user-facing text. Keys referenced via t("section.key").
+
+# ── Toast messages ───────────────────────────────────────────────
+
+[toast]
+ai_on = "Analyse IA : activée"
+ai_off = "Analyse IA : désactivée"
+ai_on_no_key = "Analyse IA : activée — aucune clé API"
+secret_on = "Mode secret : activé"
+secret_off = "Mode secret : désactivé"
+shell_restarted = "Shell redémarré."
+copied = "{source} copié dans le presse-papiers."
+nothing_to_copy = "Rien de sélectionné à copier."
+nothing_to_copy_empty = "Rien à copier."
+copy_failed = "Échec de la copie : {error}"
+pasted = "{count} caractères collés."
+clipboard_empty = "Le presse-papiers est vide."
+paste_failed = "Échec du collage : {error}"
+review_cancelled = "Analyse annulée."
+model_cancelled = "Sélection du modèle annulée."
+connected = "✓ Connecté à {provider}"
+
+# ── Welcome / advisory pane ─────────────────────────────────────
+
+[welcome]
+title = "ridinCLIgun"
+tagline = "Votre compagnon shell."
+motto = "Conseille, n'agit jamais."
+help_hint = "Ctrl+G → H  afficher l'aide"
+
+# ── Onboarding (first run) ──────────────────────────────────────
+
+[onboarding]
+title = "Bienvenue dans ridinCLIgun"
+tagline = "Votre compagnon shell."
+motto = "Conseille, n'agit jamais."
+shortcuts_title = "Raccourcis clavier :"
+shortcut_review = "Ctrl+G, R   analyse IA"
+shortcut_help = "Ctrl+G, ?   aide commande"
+shortcut_settings = "Ctrl+G, G   paramètres"
+shortcut_all = "Ctrl+G, H   tous les raccourcis"
+setup_title = "Configurer l'IA :"
+setup_hint = "Ctrl+G, G → Fournisseurs"
+setup_detail = "pour ajouter votre clé API."
+start_hint = "Commencez à taper pour démarrer."
+
+# ── Help overlay ─────────────────────────────────────────────────
+
+[help]
+title = "Raccourcis"
+quit = "quitter"
+divider_left = "séparateur gauche"
+divider_right = "séparateur droite"
+leader_title = "Touche leader Ctrl+G :"
+review = "analyse IA de la commande"
+insert = "insérer la suggestion IA"
+history = "ouvrir l'historique"
+cmd_help = "afficher cmd --help"
+toggle_ai = "activer/désactiver l'IA"
+model_select = "sélection du modèle"
+settings = "paramètres"
+toggle_secret = "activer/désactiver le mode secret"
+this_help = "cette aide"
+restart_shell = "redémarrer le shell"
+debug = "infos de débogage"
+quit_fallback = "quitter (alternative)"
+dismiss = "Échap pour fermer."
+
+# ── Secrets warning ─────────────────────────────────────────────
+
+[secrets]
+title = "🔒 Secrets détectés"
+auto_blocked = "Analyse IA bloquée automatiquement."
+warning_line1 = "Les secrets ne doivent pas être envoyés à l'IA."
+warning_line2 = "Supprimez les secrets avant de demander"
+warning_line3 = "une analyse IA."
+detected_in_command = "🔒 Secrets détectés dans la commande."
+send_anyway = "L'envoi à l'IA peut exposer vos identifiants."
+confirm_send = "Appuyez à nouveau sur Ctrl+G, R pour envoyer quand même."
+detected_in_clipboard = "🔒 Secrets détectés dans le presse-papiers"
+clipboard_found = "Trouvés : {kinds}"
+clipboard_confirm = "Appuyez sur V pour coller quand même,"
+clipboard_cancel = "toute autre touche pour annuler."
+
+# ── Redaction preview ───────────────────────────────────────────
+
+[redaction]
+title = "🔍 Aperçu de la masquage"
+confirm = "Ctrl+G, R pour confirmer et envoyer."
+cancel = "Toute autre touche pour annuler."
+original = "Original :"
+sent_to_ai = "Envoyé à l'IA :"
+masked = "Masqué :"
+config_hint = "Désactivable dans la config [privacy]."
+
+# ── AI review ───────────────────────────────────────────────────
+
+[review]
+title = "Analyse IA"
+loading = "🔍 Analyse en cours : {command}"
+asking = "Interrogation de {provider}..."
+insert_hint = "Ctrl+G, I pour insérer la suggestion."
+
+# ── Connection error ────────────────────────────────────────────
+
+[connection]
+title = "⚠ Échec de connexion"
+unreachable = "Impossible de joindre {provider}."
+check_title = "Vérifiez :"
+check_network = "- Connexion réseau"
+check_key = "- Clé API dans ~/.config/ridincligun/.env"
+check_status = "- Page de statut du fournisseur"
+restart_hint1 = "Après avoir mis à jour la clé API,"
+restart_hint2 = "redémarrez l'application pour appliquer."
+local_active = "Les avertissements locaux restent actifs."
+
+# ── Notices (advisory pane) ─────────────────────────────────────
+
+[notice]
+ai_off = "L'IA est désactivée. Basculez avec Ctrl+G, A."
+secret_mode_on = "Le mode secret est activé — commande non envoyée.\nBasculez avec Ctrl+G, S."
+no_api_key = "Aucune clé API configurée.\nAjoutez ANTHROPIC_API_KEY dans :\n~/.config/ridincligun/.env"
+no_command = "Aucune commande à analyser."
+no_suggestion = "Aucune suggestion IA disponible.\nDemandez d'abord une analyse (Ctrl+G, R)."
+extract_failed = "Impossible d'extraire une commande\nde la suggestion IA."
+inserted = "Inséré : {suggestion}\n\nVérifiez avant d'appuyer sur Entrée."
+
+# ── Command help ────────────────────────────────────────────────
+
+[cmd_help]
+no_command = "Aucune commande à rechercher.\nSaisissez d'abord une commande."
+looking_up = "Recherche d'aide pour : {cmd}"
+trying = "Essai de --help, -h, man..."
+not_found = "Aucune aide trouvée pour : {cmd}\n\nEssayé --help, -h et la page man."
+invalid_name = "Nom de commande invalide : {cmd}\n\nImpossible de rechercher l'aide."
+cmd_not_found = "Commande introuvable : {cmd}\n\nVérifiez qu'elle est installée et dans le PATH."
+timeout = "Recherche d'aide expirée (5s).\n\nLa commande est peut-être interactive."
+help_failed = "Échec de la recherche d'aide : {error}"
+truncated = "... (tronqué)"
+dismiss = "Échap pour fermer."
+
+# ── Model selector ──────────────────────────────────────────────
+
+[model]
+title = "🔧 Sélection du modèle"
+current = "Actuel : {current}"
+select_hint = "Tapez 1-{count} pour sélectionner."
+cancel_hint = "Toute autre touche pour annuler."
+apply_note = "Les changements s'appliquent immédiatement."
+persist_note = "Enregistré dans config.toml."
+switched = "Basculé vers {name}"
+no_key = "⚠ Aucune clé API pour {kind}."
+add_key = "Ajoutez {key_name} dans"
+env_path = "~/.config/ridincligun/.env"
+restart = "et redémarrez."
+checking = "Vérification de la connexion..."
+
+# ── Deep analysis ───────────────────────────────────────────────
+
+[deep]
+fetching = "⏳ Récupération du contenu du script..."
+fetch_failed = "⚠ Échec de la récupération du script"
+fetch_caution1 = "Le script n'a pas pu être récupéré pour analyse."
+fetch_caution2 = "Procédez avec prudence — le contenu est inconnu."
+script_fetched = "📄 Script récupéré : {size}"
+too_large = "⚠ Script trop volumineux pour le contexte du modèle"
+partial = "Analyse partielle — du code n'a pas été examiné."
+analyzing = "Analyse du contenu..."
+analysis_title = "🔬 Analyse du script"
+analysis_failed = "⚠ Échec de l'analyse du script"
+partial_title = "⚠ ANALYSE PARTIELLE"
+partial_line1 = "Le script dépasse la fenêtre de contexte du modèle."
+partial_line2 = "Le code non examiné peut contenir"
+partial_line3 = "des actions supplémentaires. Inspectez"
+partial_line4 = "le script complet manuellement avant exécution."
+
+# ── Status bar ──────────────────────────────────────────────────
+
+[status]
+ai_label = "IA : "
+secret_label = "Secret : "
+version_label = "Version : "
+on = "activé"
+off = "désactivé"
+offline = "hors ligne"
+error = "erreur"
+leader_waiting = "⌨ Ctrl+G..."
+help_hint = "Ctrl+G → aide"
+
+# ── Settings screen ─────────────────────────────────────────────
+
+[settings]
+title = "Paramètres"
+section_ai = "IA"
+section_privacy = "Confidentialité"
+section_keys = "Clés API disponibles"
+section_general = "Général"
+ai_enabled = "IA activée au démarrage"
+provider_label = "Fournisseur : {provider}"
+model_label = "Modèle : {model}"
+review_mode_label = "Mode d'analyse : {mode}"
+redaction_preview = "Afficher l'aperçu de masquage avant l'analyse IA"
+clipboard_safety = "Avertir avant de coller des secrets"
+key_configured = "configurée (...{suffix})"
+key_from_env = "depuis env (...{suffix})"
+key_not_configured = "non configurée"
+hint = "↑↓ naviguer  Espace basculer/parcourir  Entrée modifier/sélectionner\n  ↵ sur Fournisseur/Modèle : ouvrir le sélecteur\n\n  Appuyez sur Échap pour quitter"
+key_input_title = "Saisissez la clé API pour {provider}"
+key_input_placeholder = "Collez votre clé API ici..."
+key_input_hint = "Entrée pour enregistrer  Échap pour annuler"
+language_label = "Langue : {language}"
+
+# ── Review modes ────────────────────────────────────────────────
+
+[modes]
+default = "Par défaut"
+explorer = "Mode explorateur (pour enfants)"
+
+# ── History ─────────────────────────────────────────────────────
+
+[history]
+title = "📜 Historique des analyses"
+count = "({count} plus récentes)"
+no_history = "Aucun historique d'analyse.\nL'historique est enregistré après les analyses IA."
+total = "Total des entrées : {total}"
+file_label = "Fichier : {path}"
+search_label = "Recherche"
+search_placeholder = "commande, résumé, fournisseur"
+risk_label = "Risque"
+date_label = "Date"
+risk_all = "Tous"
+risk_safe = "Sûr"
+risk_caution = "Prudence"
+risk_warning = "Avertissement"
+risk_danger = "Danger"
+date_all = "Toutes"
+date_today = "Aujourd'hui"
+date_7d = "7j"
+date_30d = "30j"
+list_title = "Résultats"
+detail_title = "Détail"
+detail_command = "Commande"
+detail_summary = "Résumé"
+detail_explanation = "Explication"
+detail_suggestion = "Suggestion"
+detail_meta = "Métadonnées"
+detail_risk = "Risque"
+detail_source = "Source"
+detail_timestamp = "Heure"
+detail_provider = "Fournisseur"
+detail_tokens = "Tokens"
+source_ai = "Analyse IA"
+source_deep_analysis = "Analyse approfondie"
+source_unknown = "Inconnue"
+legacy_note = "Le détail complet n'était pas encore enregistré pour cette ancienne entrée."
+empty_title = "Aucune entrée d'historique correspondante."
+empty_hint = "Ajustez la recherche ou les filtres."
+result_count = "{shown} affichées / {total} au total"
+hint = "Tab changer le focus  ↑↓ liste/détail  PgUp/PgDn défiler  C copier la suggestion  Échap fermer"
+copy_source = "suggestion"
+copy_missing = "Aucune suggestion à copier."
+
+# ── Détection de fautes de frappe (volet d'avis) ────────────────
+
+[typo]
+did_you_mean = "Voulez-vous dire : {suggestion} ?"
+
+# ── Debug ───────────────────────────────────────────────────────
+
+[debug]
+title = "Infos de débogage"

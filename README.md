@@ -1,41 +1,57 @@
-**"Riding Shotgun" for your CLI** - a split-terminal TUI with an AI companion.
+**"Riding Shotgun" for your CLI** — a split-terminal TUI with an AI companion.
 
 
 # ridinCLIgun
 
-> Your terminal copilot that watches, warns, but never touches the wheel.
+> Your terminal copilot that watches, warns — and knows the commands.
 
 ```
- ┌─ Shell ─────────────────────────┐┌─ Advisory ──────────────┐
- │ $ rm -rf ~/Documents            ││ ⚠ DANGER               │
- │                                 ││ Recursive forced delete │
- │                                 ││ targeting home folder.  │
- │                                 ││                         │
- │                                 ││ This will permanently   │
- │                                 ││ destroy your files.     │
- └─────────────────────────────────┘└─────────────────────────┘
+ ┌─ Shell ─────────────────────────────┐┌─ Advisory ──────────────────────────┐
+ │ $ git push --force                  ││ ⚠ WARNING                           │
+ │                                     ││ Force-push rewrites remote history. │
+ │                                     ││ Teammates' work may be lost.        │
+ │                                     ││                                     │
+ │                                     ││ git — the fast version control sys  │
+ │                                     ││                                     │
+ │                                     ││ ▸ safer alternative:                │
+ │                                     ││   git push --force-with-lease       │
+ │                                     ││ ▸ push current branch:              │
+ │                                     ││   git push origin HEAD              │
+ └─────────────────────────────────────┘└─────────────────────────────────────┘
 ```
 
-ridinCLIgun splits your terminal in two: a **real shell** on the left, an **advisory pane** on the right. Type anything — it watches in real time and warns you before you hit Enter on something you'll regret.
+ridinCLIgun splits your terminal in two: a **real shell** on the left, an **advisory pane** on the right. Type anything — it watches in real time, warns you before you hit Enter on something you'll regret, and shows you what the command actually does.
 
-Add an AI backend and it becomes a second pair of eyes: reviewing pipelines, explaining flags, catching mistakes — all without ever running a single command for you.
+The advisory pane knows 6,600+ commands. It shows examples, explains flags, and catches typos — all offline, no API key needed.
 
-**You drive. It rides shotgun.**
+Add an AI backend and it goes further: reviewing pipelines, catching edge cases, explaining options — in your language.
 
-ridinCLIgun is a split-terminal TUI for terminal safety and CLI security. It helps catch dangerous commands, review shell pipelines, and make command-line work safer without taking control away from the user.
+**You drive. It rides shotgun. And it knows the roads.**
 
 ## What it does
 
-- **Instant local warnings** — offline regex catalog catches dangerous patterns before you hit Enter
-- **AI command review** — ask Claude to review what you're about to run (opt-in, explicit trigger)
-- **Real shell** — not a wrapper, not a sandbox. Full PTY with colors, tab completion, history
-- **Secret mode** — one toggle to block anything from reaching the AI
-- **Draggable split pane** — resize with mouse or keyboard
-- **Copy/paste** — mouse-select text in either pane, clipboard integration
-- **Settings menu** — configure AI, privacy, and providers from inside the app (`Ctrl+G, G`)
-- **Clipboard safety** — warns before pasting commands containing secrets
-- **Redaction preview** — see exactly what gets sent to the AI before it leaves
+**Instant local analysis — no AI, no internet, no waiting:**
+- **Risk warnings** — offline catalog catches dangerous patterns as you type
+- **Command knowledge** — 6,600+ commands with descriptions and real usage examples
+- **Typo detection** — "Did you mean `git`?" when you type `gti`
+- **Real shell** — full PTY with colors, tab completion, history, scrollback
+
+**With AI enabled (opt-in, explicit trigger):**
+- **AI command review** — ask Claude, GPT, or Mistral to review what you're about to run
 - **Deep script analysis** — fetches and analyzes remote scripts from `curl | bash` patterns
+- **AI suggestions** — context-aware alternatives, inserted directly into the shell
+
+**Privacy and safety controls:**
+- **Secret mode** — one toggle to block anything from reaching the AI
+- **Redaction preview** — see exactly what gets sent to the AI before it leaves your machine
+- **Clipboard safety** — warns before pasting commands containing secrets
+
+**Configuration:**
+- **Multi-language** — full UI in English, German, or French; AI responds in your language
+- **History browser** — browse, search, and learn from your past AI reviews
+- **Settings menu** — configure everything from inside the app (`Ctrl+G, G`)
+- **Provider switching** — Anthropic, OpenAI, Mistral; choice persists across restarts
+- **Explorer mode** — gentler tone for beginners and kids
 - **Onboarding** — first-run guidance, no docs needed
 
 
@@ -126,7 +142,7 @@ echo "OPENAI_API_KEY=your-key" >> ~/.config/ridincligun/.env
 
 Inside the app: `Ctrl+G, A` to toggle AI on, `Ctrl+G, M` to switch between models/providers.
 
-Or add keys from inside the app: `Ctrl+G, G` → Providers.
+Or enter keys from inside the app: `Ctrl+G, G` → navigate to a provider → Enter.
 
 ## Shortcuts
 
@@ -138,6 +154,7 @@ Everything goes through `Ctrl+G` as a leader key (vim-style, no timeout):
 | `Ctrl+G, I` | Insert AI suggestion into shell |
 | `Ctrl+G, A` | Toggle AI on/off |
 | `Ctrl+G, M` | Switch AI model/provider |
+| `Ctrl+G, K` | Open review history browser |
 | `Ctrl+G, S` | Toggle Secret mode |
 | `Ctrl+G, ?` | Show --help for current command |
 | `Ctrl+G, C` | Copy selected text |
@@ -150,14 +167,20 @@ Everything goes through `Ctrl+G` as a leader key (vim-style, no timeout):
 
 ## Status
 
-**v0.3** — "This tool is careful." macOS, Python 3.12+.
+**v0.4** — "This tool is genuinely useful." macOS, Python 3.12+.
 
 ## Config
 
 `~/.config/ridincligun/` — auto-created on first run:
 
-- `config.toml` — UI preferences, provider settings
-- `.env` — API keys (gitignored, stays local)
+- `config.toml` — UI preferences, provider, language, split ratio
+- `.env` — API keys (gitignored, stays local, 0600 permissions)
+
+Language setting: `language = "de"` (or `"fr"`, `"en"`) in `[general]`. Leave empty for auto-detect from `$LANG`.
+
+## Command catalog
+
+The offline command knowledge comes from [tldr-pages](https://github.com/tldr-pages/tldr) (v2.3, MIT license) — a community-maintained database of practical command examples. 6,615 commands across common, Linux, and macOS platforms. German and French overlays included. Bundled as plain JSON — no network access at runtime.
 
 ## Documentation
 
@@ -171,12 +194,12 @@ Everything goes through `Ctrl+G` as a leader key (vim-style, no timeout):
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/ -v
+pytest tests/ -v        # 377 tests
 ruff check src/
 ```
 
 ## Keywords
-terminal safety, CLI safety, shell safety, command review, dangerous commands, terminal copilot, split-terminal TUI, pipe inspection
+terminal safety, CLI safety, shell safety, command review, dangerous commands, terminal copilot, split-terminal TUI, pipe inspection, command assistance, tldr, beginner-friendly terminal
 
 ## License
 

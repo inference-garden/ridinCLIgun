@@ -33,6 +33,7 @@ class LeaderAction(Enum):
     INSERT_SUGGESTION = auto()  # I — insert AI suggestion into shell
     CMD_HELP = auto()     # ? — show --help for current command
     MODEL_SELECT = auto()  # M — model/provider selection
+    HISTORY = auto()      # K — open review history browser
     SETTINGS = auto()     # G — open settings menu
 
 
@@ -51,6 +52,7 @@ LEADER_MAP: dict[str, LeaderAction] = {
     "?": LeaderAction.CMD_HELP,
     "question_mark": LeaderAction.CMD_HELP,
     "m": LeaderAction.MODEL_SELECT,
+    "k": LeaderAction.HISTORY,
     "g": LeaderAction.SETTINGS,
 }
 

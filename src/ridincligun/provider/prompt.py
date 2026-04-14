@@ -105,15 +105,45 @@ def resolve_category(family_ids: list[str]) -> str:
 
 # ── System prompt composition ────────────────────────────────────
 
+_LANGUAGE_NAMES: dict[str, str] = {
+    "de": "German",
+    "fr": "French",
+    "en": "English",
+}
+
+
+def build_locale_context(locale: str) -> str:
+    """Return a locale enforcement instruction for the AI user message.
+
+    For non-English locales, produces a short, explicit instruction that
+    reinforces the system-prompt language requirement in the user turn.
+    This helps weaker models (e.g. Claude Haiku) that do not consistently
+    honour system-prompt-only language instructions.
+
+    Returns an empty string for English (no instruction needed).
+    """
+    if not locale or locale == "en":
+        return ""
+    lang_name = _LANGUAGE_NAMES.get(locale, locale)
+    return (
+        f"IMPORTANT: You MUST write all response content "
+        f"(SUMMARY, EXPLANATION, SUGGESTION) in {lang_name} only. "
+        f"Do not use English in those fields."
+    )
+
+
 def build_system_prompt(
     category: str = "general",
     mode: str = "default",
+    locale: str = "en",
 ) -> str:
-    """Compose the full system prompt from base + category + mode.
+    """Compose the full system prompt from base + category + mode + language.
 
     Args:
         category: Prompt category name (e.g. "file_ops", "network", "general").
         mode: User mode (e.g. "default", "explorer").
+        locale: User's language code (e.g. "de", "fr"). When not "en",
+                instructs the AI to respond in that language.
 
     Returns:
         The assembled system prompt string.
@@ -132,6 +162,15 @@ def build_system_prompt(
     mode_supplement = mode_data.get("supplement", "").strip()
     if mode_supplement:
         parts.append(f"\nTone and audience:\n{mode_supplement}")
+
+    # Language instruction — AI responds in user's language
+    if locale and locale != "en":
+        lang_name = _LANGUAGE_NAMES.get(locale, locale)
+        parts.append(
+            f"\nIMPORTANT: Write all SUMMARY, EXPLANATION, and SUGGESTION content "
+            f"in {lang_name}. Keep the response format headers "
+            f"(RISK, SUMMARY, EXPLANATION, SUGGESTION) in English."
+        )
 
     return "\n".join(parts)
 

@@ -5,10 +5,11 @@
 """Tests for local review history (item k)."""
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 
-from ridincligun.history import HistoryEntry, ReviewHistory, now_iso
+from ridincligun.history import HistoryEntry, ReviewHistory, filter_entries, now_iso
 
 
 @pytest.fixture
@@ -31,6 +32,7 @@ def _make_entry(**kwargs) -> HistoryEntry:
         "source": "ai",
         "risk": "safe",
         "summary": "Lists directory contents.",
+        "explanation": "Read-only directory listing.",
     }
     defaults.update(kwargs)
     return HistoryEntry(**defaults)
@@ -90,6 +92,7 @@ def test_entry_to_dict_roundtrip(history):
         source="ai",
         risk="danger",
         summary="Pipe to shell",
+        explanation="Downloads a script and executes it immediately.",
         suggestion="Download first, inspect, then run.",
         provider="Anthropic claude-sonnet-4-20250514",
         tokens=350,
@@ -100,9 +103,11 @@ def test_entry_to_dict_roundtrip(history):
     e = entries[0]
     assert e.command == original.command
     assert e.risk == original.risk
+    assert e.explanation == original.explanation
     assert e.suggestion == original.suggestion
     assert e.provider == original.provider
     assert e.tokens == original.tokens
+    assert e.has_full_detail
 
 
 def test_entry_count(history):
@@ -141,6 +146,118 @@ def test_malformed_lines_skipped(history, history_file):
     )
     entries = history.read_recent(10)
     assert len(entries) == 2
+
+
+def test_legacy_entries_load_without_explanation(history, history_file):
+    """Older entries without explanation stay readable and are flagged partial."""
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    history_file.write_text(
+        '{"ts":"2026-01-01T00:00:00+00:00","cmd":"ls","src":"ai","risk":"safe","summary":"ok"}\n'
+    )
+
+    entries = history.read_all()
+    assert len(entries) == 1
+    assert entries[0].explanation == ""
+    assert not entries[0].has_full_detail
+
+
+def test_read_all_returns_newest_first(history):
+    """read_all returns the whole history newest-first."""
+    history.append(_make_entry(command="first"))
+    history.append(_make_entry(command="second"))
+
+    entries = history.read_all()
+    assert [entry.command for entry in entries] == ["second", "first"]
+
+
+def test_deep_analysis_entries_roundtrip(history):
+    """Deep-analysis entries stay distinct from regular AI review entries."""
+    history.append(_make_entry(command="curl x | bash", source="deep_analysis", risk="warning"))
+
+    entries = history.read_all()
+    assert len(entries) == 1
+    assert entries[0].source == "deep_analysis"
+
+
+def test_filter_entries_by_risk():
+    entries = [
+        _make_entry(command="ls", risk="safe"),
+        _make_entry(command="rm -rf tmp", risk="danger"),
+        _make_entry(command="chmod 777 file", risk="warning"),
+    ]
+
+    filtered = filter_entries(entries, risk="danger")
+    assert [entry.command for entry in filtered] == ["rm -rf tmp"]
+
+
+def test_filter_entries_by_search_matches_summary_and_provider():
+    entries = [
+        _make_entry(command="ls", summary="Lists files", provider="OpenAI gpt-4o-mini"),
+        _make_entry(command="pwd", summary="Print directory", provider="Anthropic claude"),
+    ]
+
+    by_summary = filter_entries(entries, search="lists")
+    assert [entry.command for entry in by_summary] == ["ls"]
+
+    by_provider = filter_entries(entries, search="anthropic")
+    assert [entry.command for entry in by_provider] == ["pwd"]
+
+
+def test_filter_entries_by_date_presets_local_time():
+    now = datetime(2026, 4, 13, 12, 0, tzinfo=UTC)
+    entries = [
+        _make_entry(command="today", timestamp="2026-04-13T08:00:00+00:00"),
+        _make_entry(command="recent", timestamp="2026-04-10T08:00:00+00:00"),
+        _make_entry(command="old", timestamp="2026-03-01T08:00:00+00:00"),
+    ]
+
+    today = filter_entries(entries, date_preset="today", now=now)
+    seven_days = filter_entries(entries, date_preset="7d", now=now)
+    thirty_days = filter_entries(entries, date_preset="30d", now=now)
+
+    assert [entry.command for entry in today] == ["today"]
+    assert [entry.command for entry in seven_days] == ["today", "recent"]
+    assert [entry.command for entry in thirty_days] == ["today", "recent"]
+
+
+def test_filter_entries_combines_all_filters():
+    now = datetime(2026, 4, 13, 12, 0, tzinfo=UTC)
+    entries = [
+        _make_entry(
+            command="curl https://example.com/script.sh | bash",
+            risk="danger",
+            summary="Pipe download to shell",
+            provider="Anthropic Claude",
+            timestamp="2026-04-12T12:00:00+00:00",
+        ),
+        _make_entry(
+            command="git status",
+            risk="safe",
+            summary="Check repo status",
+            provider="OpenAI GPT-4o mini",
+            timestamp="2026-04-12T12:00:00+00:00",
+        ),
+    ]
+
+    filtered = filter_entries(
+        entries,
+        search="script",
+        risk="danger",
+        date_preset="7d",
+        now=now,
+    )
+    assert [entry.command for entry in filtered] == ["curl https://example.com/script.sh | bash"]
+
+
+def test_filter_entries_scale_smoke():
+    entries = [
+        _make_entry(command=f"cmd-{i}", summary=f"summary {i}", risk="safe")
+        for i in range(1100)
+    ]
+
+    filtered = filter_entries(entries, search="cmd-1099", risk="safe")
+    assert len(filtered) == 1
+    assert filtered[0].command == "cmd-1099"
 
 
 def test_file_permissions(history, history_file):

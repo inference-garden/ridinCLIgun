@@ -16,6 +16,7 @@ from ridincligun.app import RidinCLIgunApp
 from ridincligun.config import Config, ProviderSettings
 from ridincligun.state import Phase
 from ridincligun.ui.advisory_pane import AdvisoryPane
+from ridincligun.ui.history_screen import HistoryBrowserScreen
 from ridincligun.ui.shell_pane import ShellPane
 from ridincligun.ui.status_bar import StatusBar
 
@@ -130,42 +131,54 @@ async def test_toast_does_not_replace_advisory_content(app_config):
 
 @pytest.mark.asyncio
 async def test_secret_mode_toggle_uses_toast(app_config):
-    """Secret mode toggle should use toast, not replace advisory pane."""
+    """Secret mode toggle should use toast, not inject a notice into the advisory pane.
+
+    With 4.6, _on_command_changed may legitimately update the advisory pane if a
+    key event touches the input.  The meaningful contract is that the OLD behaviour
+    (injecting 'Secret mode is on — command not sent.' directly into the pane) no
+    longer occurs — not that the pane is frozen.
+    """
+    from ridincligun.i18n import t
+
     app = RidinCLIgunApp(config=app_config)
     async with app.run_test(size=(120, 40)) as pilot:
         advisory = app.query_one("#advisory-pane", AdvisoryPane)
-        # Set advisory content that should survive the toggle
-        advisory.set_content([("  Important warning", "bold red")])
-        before = advisory._raw_lines[:]
 
         # Toggle secret mode
         await pilot.press("ctrl+g")
         await pilot.press("s")
         assert app.state.secret_mode
 
-        # Advisory pane content should be unchanged
-        assert advisory._raw_lines == before
+        # The old "secret mode" notice must NOT appear in the advisory pane.
+        pane_text = " ".join(line for line, _ in advisory._raw_lines)
+        secret_notice = t("notice.secret_mode_on").split("\n")[0]
+        assert secret_notice not in pane_text, (
+            "Secret mode toggle must use a toast, not write to the advisory pane"
+        )
 
 
 @pytest.mark.asyncio
 async def test_ai_off_toggle_uses_toast(app_config):
-    """AI toggle off should use toast, not replace advisory pane."""
+    """AI toggle off should use toast, not inject a notice into the advisory pane."""
+    from ridincligun.i18n import t
+
     app = RidinCLIgunApp(config=app_config)
     async with app.run_test(size=(120, 40)) as pilot:
         # First enable AI
         app.state.ai_enabled = True
-
-        advisory = app.query_one("#advisory-pane", AdvisoryPane)
-        advisory.set_content([("  Important warning", "bold red")])
-        before = advisory._raw_lines[:]
 
         # Toggle AI off
         await pilot.press("ctrl+g")
         await pilot.press("a")
         assert not app.state.ai_enabled
 
-        # Advisory pane content should be unchanged
-        assert advisory._raw_lines == before
+        # The old "AI is off" notice must NOT appear in the advisory pane.
+        advisory = app.query_one("#advisory-pane", AdvisoryPane)
+        pane_text = " ".join(line for line, _ in advisory._raw_lines)
+        ai_off_notice = t("notice.ai_off")
+        assert ai_off_notice not in pane_text, (
+            "AI toggle must use a toast, not write to the advisory pane"
+        )
 
 
 # ── Help persistence ─────────────────────────────────────────────
@@ -240,3 +253,33 @@ async def test_help_dismissed_by_escape(app_config):
         # Press Escape — should dismiss help
         await pilot.press("escape")
         assert not app._help_showing
+
+
+@pytest.mark.asyncio
+async def test_history_browser_opens_via_leader_key(app_config):
+    """Ctrl+G, K should open the history browser."""
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("ctrl+g")
+        await pilot.press("k")
+        await pilot.pause()
+
+        assert len(app.screen_stack) > 1
+        assert isinstance(app.screen_stack[-1], HistoryBrowserScreen)
+
+
+@pytest.mark.asyncio
+async def test_history_browser_closes_on_escape(app_config):
+    """Escape should close the history browser."""
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("ctrl+g")
+        await pilot.press("k")
+        await pilot.pause()
+
+        assert len(app.screen_stack) > 1
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert len(app.screen_stack) == 1

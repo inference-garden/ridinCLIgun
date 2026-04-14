@@ -1,0 +1,272 @@
+# ridinCLIgun — English UI strings (baseline)
+# All user-facing text. Keys referenced via t("section.key").
+
+# ── Toast messages ───────────────────────────────────────────────
+
+[toast]
+ai_on = "AI review: on"
+ai_off = "AI review: off"
+ai_on_no_key = "AI review: on — no API key"
+secret_on = "Secret mode: on"
+secret_off = "Secret mode: off"
+shell_restarted = "Shell restarted."
+copied = "Copied {source} to clipboard."
+nothing_to_copy = "Nothing selected to copy."
+nothing_to_copy_empty = "Nothing to copy."
+copy_failed = "Copy failed: {error}"
+pasted = "Pasted {count} chars."
+clipboard_empty = "Clipboard is empty."
+paste_failed = "Paste failed: {error}"
+review_cancelled = "Review cancelled."
+model_cancelled = "Model selection cancelled."
+connected = "✓ Connected to {provider}"
+
+# ── Welcome / advisory pane ─────────────────────────────────────
+
+[welcome]
+title = "ridinCLIgun"
+tagline = "Your shell companion."
+motto = "Advises, never acts."
+help_hint = "Ctrl+G → H  show help"
+
+# ── Onboarding (first run) ──────────────────────────────────────
+
+[onboarding]
+title = "Welcome to ridinCLIgun"
+tagline = "Your shell companion."
+motto = "Advises, never acts."
+shortcuts_title = "Key shortcuts:"
+shortcut_review = "Ctrl+G, R   AI review"
+shortcut_help = "Ctrl+G, ?   command help"
+shortcut_settings = "Ctrl+G, G   settings"
+shortcut_all = "Ctrl+G, H   all shortcuts"
+setup_title = "Set up AI:"
+setup_hint = "Ctrl+G, G → Providers"
+setup_detail = "to add your API key."
+start_hint = "Start typing to begin."
+
+# ── Help overlay ─────────────────────────────────────────────────
+
+[help]
+title = "Shortcuts"
+quit = "quit"
+divider_left = "divider left"
+divider_right = "divider right"
+leader_title = "Ctrl+G leader key:"
+review = "AI review command"
+insert = "insert AI suggestion"
+history = "open review history"
+cmd_help = "show cmd --help"
+toggle_ai = "toggle AI on/off"
+model_select = "model selection"
+settings = "settings"
+toggle_secret = "toggle Secret mode"
+this_help = "this help"
+restart_shell = "restart shell"
+debug = "debug info"
+quit_fallback = "quit (fallback)"
+dismiss = "Escape to dismiss."
+
+# ── Secrets warning ─────────────────────────────────────────────
+
+[secrets]
+title = "🔒 Secrets Detected"
+auto_blocked = "AI review auto-blocked."
+warning_line1 = "Secrets should not be sent to AI."
+warning_line2 = "Remove secrets before requesting"
+warning_line3 = "AI review."
+detected_in_command = "🔒 Secrets detected in command."
+send_anyway = "Sending to AI may expose credentials."
+confirm_send = "Press Ctrl+G, R again to send anyway."
+detected_in_clipboard = "🔒 Secrets detected in clipboard"
+clipboard_found = "Found: {kinds}"
+clipboard_confirm = "Press V to paste anyway,"
+clipboard_cancel = "any other key to cancel."
+
+# ── Redaction preview ───────────────────────────────────────────
+
+[redaction]
+title = "🔍 Redaction Preview"
+confirm = "Ctrl+G, R to confirm and send."
+cancel = "Any other key to cancel."
+original = "Original:"
+sent_to_ai = "Sent to AI:"
+masked = "Masked:"
+config_hint = "Switch off in [privacy] config."
+
+# ── AI review ───────────────────────────────────────────────────
+
+[review]
+title = "AI Review"
+loading = "🔍 Reviewing: {command}"
+asking = "Asking {provider}..."
+insert_hint = "Ctrl+G, I to insert suggestion."
+
+# ── Connection error ────────────────────────────────────────────
+
+[connection]
+title = "⚠ Connection Failed"
+unreachable = "Could not reach {provider}."
+check_title = "Check:"
+check_network = "- Network connection"
+check_key = "- API key in ~/.config/ridincligun/.env"
+check_status = "- Provider status page"
+restart_hint1 = "After updating the API key,"
+restart_hint2 = "restart the app to apply."
+local_active = "Local advisories still active."
+
+# ── Notices (advisory pane) ─────────────────────────────────────
+
+[notice]
+ai_off = "AI is off. Toggle with Ctrl+G, A."
+secret_mode_on = "Secret mode is on — command not sent.\nToggle with Ctrl+G, S."
+no_api_key = "No API key configured.\nAdd ANTHROPIC_API_KEY to:\n~/.config/ridincligun/.env"
+no_command = "No command to review."
+no_suggestion = "No AI suggestion available.\nRequest a review first (Ctrl+G, R)."
+extract_failed = "Could not extract a command from\nthe AI suggestion."
+inserted = "Inserted: {suggestion}\n\nReview before pressing Enter."
+
+# ── Command help ────────────────────────────────────────────────
+
+[cmd_help]
+no_command = "No command to look up.\nType a command first."
+looking_up = "Looking up help for: {cmd}"
+trying = "Trying --help, -h, man..."
+not_found = "No help found for: {cmd}\n\nTried --help, -h, and man page."
+invalid_name = "Invalid command name: {cmd}\n\nCannot look up help."
+cmd_not_found = "Command not found: {cmd}\n\nMake sure it's installed and in PATH."
+timeout = "Help lookup timed out (5s).\n\nThe command may be interactive."
+help_failed = "Help lookup failed: {error}"
+truncated = "... (truncated)"
+dismiss = "Escape to dismiss."
+
+# ── Model selector ──────────────────────────────────────────────
+
+[model]
+title = "🔧 Model Selection"
+current = "Current: {current}"
+select_hint = "Type 1-{count} to select."
+cancel_hint = "Any other key to cancel."
+apply_note = "Changes apply immediately."
+persist_note = "Persisted to config.toml."
+switched = "Switched to {name}"
+no_key = "⚠ No API key for {kind}."
+add_key = "Add {key_name} to"
+env_path = "~/.config/ridincligun/.env"
+restart = "and restart."
+checking = "Checking connection..."
+
+# ── Deep analysis ───────────────────────────────────────────────
+
+[deep]
+fetching = "⏳ Fetching script content..."
+fetch_failed = "⚠ Script fetch failed"
+fetch_caution1 = "The script could not be retrieved for analysis."
+fetch_caution2 = "Proceed with extra caution — content is unknown."
+script_fetched = "📄 Script fetched: {size}"
+too_large = "⚠ Script too large for model context"
+partial = "Partial analysis — some code not reviewed."
+analyzing = "Analyzing content..."
+analysis_title = "🔬 Script Analysis"
+analysis_failed = "⚠ Script analysis failed"
+partial_title = "⚠ PARTIAL ANALYSIS"
+partial_line1 = "Script exceeded model context window."
+partial_line2 = "Unreviewed code may contain"
+partial_line3 = "additional actions. Inspect the"
+partial_line4 = "full script manually before running."
+
+# ── Status bar ──────────────────────────────────────────────────
+
+[status]
+ai_label = "AI: "
+secret_label = "Secret: "
+version_label = "Version: "
+on = "on"
+off = "off"
+offline = "offline"
+error = "error"
+leader_waiting = "⌨ Ctrl+G..."
+help_hint = "Ctrl+G → help"
+
+# ── Settings screen ─────────────────────────────────────────────
+
+[settings]
+title = "Settings"
+section_ai = "AI"
+section_privacy = "Privacy"
+section_keys = "Available API-Keys"
+section_general = "General"
+ai_enabled = "AI enabled at startup"
+provider_label = "Provider: {provider}"
+model_label = "Model: {model}"
+review_mode_label = "Review mode: {mode}"
+redaction_preview = "Show redaction preview before AI review"
+clipboard_safety = "Warn before pasting secrets"
+key_configured = "configured (...{suffix})"
+key_from_env = "from env (...{suffix})"
+key_not_configured = "not configured"
+hint = "↑↓ navigate  Space toggle/cycle  Enter edit/select\n  ↵ on Provider/Model: open model selector\n\n  Press ESC to exit"
+key_input_title = "Enter API key for {provider}"
+key_input_placeholder = "Paste your API key here..."
+key_input_hint = "Enter to save  Escape to cancel"
+language_label = "Language: {language}"
+
+# ── Review modes ────────────────────────────────────────────────
+
+[modes]
+default = "Default"
+explorer = "Explorer mode (for Kids)"
+
+# ── History ─────────────────────────────────────────────────────
+
+[history]
+title = "📜 Review History"
+count = "({count} most recent)"
+no_history = "No review history yet.\nHistory is recorded after AI reviews."
+total = "Total entries: {total}"
+file_label = "File: {path}"
+search_label = "Search"
+search_placeholder = "command, summary, provider"
+risk_label = "Risk"
+date_label = "Date"
+risk_all = "All"
+risk_safe = "Safe"
+risk_caution = "Caution"
+risk_warning = "Warning"
+risk_danger = "Danger"
+date_all = "All"
+date_today = "Today"
+date_7d = "7d"
+date_30d = "30d"
+list_title = "Results"
+detail_title = "Detail"
+detail_command = "Command"
+detail_summary = "Summary"
+detail_explanation = "Explanation"
+detail_suggestion = "Suggestion"
+detail_meta = "Metadata"
+detail_risk = "Risk"
+detail_source = "Source"
+detail_timestamp = "Time"
+detail_provider = "Provider"
+detail_tokens = "Tokens"
+source_ai = "AI review"
+source_deep_analysis = "Deep analysis"
+source_unknown = "Unknown"
+legacy_note = "Full detail was not stored for this older entry."
+empty_title = "No matching history entries."
+empty_hint = "Adjust search or filters."
+result_count = "{shown} shown / {total} total"
+hint = "Tab switch focus  ↑↓ list/detail  PgUp/PgDn scroll  C copy suggestion  Esc close"
+copy_source = "suggestion"
+copy_missing = "No suggestion available to copy."
+
+# ── Typo detection (advisory pane) ─────────────────────────────
+
+[typo]
+did_you_mean = "Did you mean: {suggestion}?"
+
+# ── Debug ───────────────────────────────────────────────────────
+
+[debug]
+title = "Debug Info"

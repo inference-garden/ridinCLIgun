@@ -32,7 +32,7 @@ class ProviderSettings:
 
     kind: str = "anthropic"
     model: str = "claude-sonnet-4-20250514"
-    timeout_seconds: float = 10.0
+    timeout_seconds: float = 15.0
     max_tokens: int = 1024
 
 
@@ -52,6 +52,9 @@ class Config:
 
     # Review mode — "default" or "explorer" (kid-friendly)
     review_mode: str = "default"
+
+    # Language — "en", "de", "fr", or "" (auto-detect from $LANG)
+    language: str = ""
 
     # Shell settings
     shell: str = ""  # empty = use $SHELL or /bin/zsh
@@ -106,6 +109,7 @@ def _ensure_config_dir(config_dir: Path) -> None:
             "\n"
             "[general]\n"
             "ai_enabled_default = false\n"
+            '# language = ""  # "en", "de", "fr", or "" for auto-detect\n'
             '# review_mode = "default"  # "default" or "explorer" (kid-friendly)\n'
             '# shell = "/bin/zsh"  # override default shell\n'
             "\n"
@@ -159,6 +163,8 @@ def load_config(config_dir: Path | None = None) -> Config:
             mode = str(general["review_mode"]).lower()
             if mode in ("default", "explorer"):
                 config.review_mode = mode
+        if "language" in general:
+            config.language = str(general["language"]).lower()
 
         # Provider settings
         provider_data = data.get("provider", {})
@@ -192,6 +198,7 @@ def load_config(config_dir: Path | None = None) -> Config:
     _KEY_MAP = {  # noqa: N806
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
+        "mistral": "MISTRAL_API_KEY",
     }
     key_name = _KEY_MAP.get(config.provider.kind.lower(), "ANTHROPIC_API_KEY")
     config.api_key = (
@@ -236,3 +243,40 @@ def save_split_ratio(config: Config, ratio: tuple[int, int]) -> None:
         config_file.write_text(text)
     except OSError:
         pass  # Non-critical — ratio resets to default next launch
+
+
+def save_provider_config(config: Config, kind: str, model: str) -> None:
+    """Persist provider kind and model to config.toml.
+
+    Updates the [provider] kind and model values in-place.
+    Fails silently on I/O errors — the in-session switch remains active.
+    """
+    import re as _re
+
+    config_file = config.config_file
+    if not config_file.exists():
+        return
+
+    try:
+        text = config_file.read_text()
+
+        if _re.search(r"^kind\s*=", text, _re.MULTILINE):
+            text = _re.sub(
+                r'^kind\s*=\s*"[^"]*"',
+                f'kind = "{kind}"',
+                text,
+                count=1,
+                flags=_re.MULTILINE,
+            )
+        if _re.search(r"^model\s*=", text, _re.MULTILINE):
+            text = _re.sub(
+                r'^model\s*=\s*"[^"]*"',
+                f'model = "{model}"',
+                text,
+                count=1,
+                flags=_re.MULTILINE,
+            )
+
+        config_file.write_text(text)
+    except OSError:
+        pass  # Non-critical — provider choice resets on next launch

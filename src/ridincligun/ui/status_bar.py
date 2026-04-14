@@ -14,6 +14,9 @@ from rich.style import Style
 from textual.strip import Strip
 from textual.widget import Widget
 
+from ridincligun import __version__
+from ridincligun.i18n import t
+
 
 class StatusBar(Widget):
     """Single-line status bar at the bottom of the app."""
@@ -64,41 +67,44 @@ class StatusBar(Widget):
         width = self.size.width
         dim = Style.parse("dim")
         secret_style = Style.parse("bold yellow") if self._secret_mode else Style.parse("dim")
-        secret_text = "on" if self._secret_mode else "off"
+        secret_text = t("status.on") if self._secret_mode else t("status.off")
 
         # AI status: show connection state when relevant
         if self._ai_status == "offline":
             ai_style = Style.parse("bold red")
-            ai_text = "offline"
+            ai_text = t("status.offline")
         elif self._ai_status == "error":
             ai_style = Style.parse("bold red")
-            ai_text = "error"
+            ai_text = t("status.error")
         elif self._ai_enabled:
             ai_style = Style.parse("bold green")
-            ai_text = "on"
+            ai_text = t("status.on")
         else:
             ai_style = Style.parse("dim red")
-            ai_text = "off"
+            ai_text = t("status.off")
 
         left_segments = [
-            Segment("  AI: ", dim),
+            Segment(f"  {t('status.ai_label')}", dim),
             Segment(ai_text, ai_style),
             Segment("  ◆  ", dim),
-            Segment("Secret: ", dim),
+            Segment(t("status.secret_label"), dim),
             Segment(secret_text, secret_style),
+            Segment("  ◆  ", dim),
+            Segment(t("status.version_label"), dim),
+            Segment(f"v{__version__}", Style.parse("bold cyan")),
         ]
 
         # Show leader key waiting indicator in the right section
         if self._leader_active:
             right_segments = [
-                Segment("⌨ Ctrl+G...", Style.parse("bold yellow")),
+                Segment(t("status.leader_waiting"), Style.parse("bold yellow")),
                 Segment("   ", dim),
                 Segment(self._shell_name, Style.parse("dim cyan")),
                 Segment("  ", dim),
             ]
         else:
             right_segments = [
-                Segment("Ctrl+G → help", dim),
+                Segment(t("status.help_hint"), dim),
                 Segment("   ", dim),
                 Segment(self._shell_name, Style.parse("dim cyan")),
                 Segment("  ", dim),

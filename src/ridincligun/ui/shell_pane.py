@@ -412,7 +412,7 @@ class ShellPane(Widget, can_focus=True):
         width = self.size.width
         line = self._get_line_buffer(y)
         if line is None:
-            return Strip.blank(width)
+            return Strip.blank(width, Style())
 
         segments: list[Segment] = []
         cols = min(self._screen.columns, width)
@@ -455,14 +455,17 @@ class ShellPane(Widget, can_focus=True):
         # Pad to width if needed
         cell_len = sum(len(s.text) for s in segments)
         if cell_len < width:
-            segments.append(Segment(" " * (width - cell_len)))
+            segments.append(Segment(" " * (width - cell_len), Style()))
 
         # Scrollback indicator on first line
         if y == 0 and self._scroll_offset > 0:
             indicator = f" ↑ {self._scroll_offset} lines ↑ "
             ind_style = Style(color="black", bgcolor="#d9a644", bold=True)
             return Strip(
-                [Segment(indicator, ind_style), Segment(" " * max(0, width - len(indicator)))],
+                [
+                    Segment(indicator, ind_style),
+                    Segment(" " * max(0, width - len(indicator)), Style()),
+                ],
                 width,
             )
 

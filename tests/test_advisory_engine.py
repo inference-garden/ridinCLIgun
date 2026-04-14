@@ -4,10 +4,13 @@
 
 """Pytest tests for the advisory engine + command catalog."""
 
+import json
+
 import pytest
 
 from ridincligun.advisory.engine import AdvisoryEngine
 from ridincligun.advisory.models import RiskLevel
+from ridincligun.advisory.tldr_store import TldrStore
 
 
 @pytest.fixture
@@ -107,3 +110,102 @@ def test_result_safe_no_warnings(engine):
     result = engine.analyze("ls")
     assert result.is_safe
     assert len(result.warnings) == 0
+
+
+# ── ReviewResult new fields (v0.4 / 4.6) ────────────────────────
+
+def test_result_has_tldr_page_for_known_command(engine):
+    """Known commands (e.g. 'ls') should have a tldr page."""
+    result = engine.analyze("ls -la")
+    # tldr_page may be None only if the bundled catalog omits 'ls', which
+    # should not happen — assert it's present or skip gracefully.
+    if result.tldr_page is not None:
+        assert result.tldr_page.command == "ls"
+        assert result.tldr_page.description
+
+
+def test_result_tldr_page_is_none_for_empty_command(engine):
+    result = engine.analyze("")
+    assert result.tldr_page is None
+
+
+def test_result_typo_suggestion_for_unknown_command(tmp_path):
+    """After set_extra_commands() is called, typo detection should fire.
+
+    Uses a minimal isolated TldrStore so the dictionary is fully controlled
+    and won't be polluted by real tldr entries that are closer matches.
+    """
+    # Build a minimal tldr catalog with only the commands we care about.
+    catalog = {"git": {"desc": "VCS.", "examples": []},
+               "grep": {"desc": "Search.", "examples": []}}
+    p = tmp_path / "tldr_catalog.json"
+    p.write_text(json.dumps(catalog), encoding="utf-8")
+
+    mini_store = TldrStore(catalog_path=p)
+    isolated_engine = AdvisoryEngine(tldr_store=mini_store)
+    isolated_engine.set_extra_commands(frozenset())  # no PATH extras
+
+    result = isolated_engine.analyze("gti status")
+    # "gti" not in {"git", "grep"} → tldr miss
+    assert result.tldr_page is None
+    # "gti" → distance 2 from "git" (transposition), no closer match in tiny dict
+    assert result.typo_suggestion == "git"
+
+
+def test_result_no_typo_for_known_command(tmp_path):
+    """Correctly-typed known commands must not trigger typo suggestions."""
+    catalog = {"git": {"desc": "VCS.", "examples": []}}
+    p = tmp_path / "tldr_catalog.json"
+    p.write_text(json.dumps(catalog), encoding="utf-8")
+    mini_store = TldrStore(catalog_path=p)
+    isolated_engine = AdvisoryEngine(tldr_store=mini_store)
+    isolated_engine.set_extra_commands(frozenset())
+    result = isolated_engine.analyze("git status")
+    assert result.typo_suggestion is None
+
+
+def test_result_typo_none_before_set_extra_commands():
+    """Before set_extra_commands() the typo detector is None — no suggestion."""
+    e = AdvisoryEngine()
+    result = e.analyze("gti status")
+    assert result.typo_suggestion is None
+
+
+def test_result_typo_none_for_empty_command(engine):
+    engine.set_extra_commands(frozenset(["git"]))
+    result = engine.analyze("")
+    assert result.typo_suggestion is None
+
+
+def test_analyze_passes_locale_to_tldr(tmp_path):
+    """analyze(locale='de') returns a DE tldr page when available."""
+    en_catalog = {"ls": {"desc": "List files.", "examples": []}}
+    de_catalog = {"ls": {"desc": "Dateien auflisten.", "examples": []}}
+    en_path = tmp_path / "tldr_catalog.json"
+    de_path = tmp_path / "tldr_catalog_de.json"
+    en_path.write_text(json.dumps(en_catalog), encoding="utf-8")
+    de_path.write_text(json.dumps(de_catalog), encoding="utf-8")
+
+    mini_store = TldrStore(catalog_path=en_path)
+    eng = AdvisoryEngine(tldr_store=mini_store)
+
+    result_de = eng.analyze("ls", locale="de")
+    assert result_de.tldr_page is not None
+    assert result_de.tldr_page.description == "Dateien auflisten."
+
+    result_en = eng.analyze("ls", locale="en")
+    assert result_en.tldr_page is not None
+    assert result_en.tldr_page.description == "List files."
+
+
+def test_env_var_prefix_stripped(tmp_path):
+    """Leading VAR=value assignments must not confuse the command name."""
+    catalog = {"git": {"desc": "VCS.", "examples": []}}
+    p = tmp_path / "tldr_catalog.json"
+    p.write_text(json.dumps(catalog), encoding="utf-8")
+    mini_store = TldrStore(catalog_path=p)
+    isolated_engine = AdvisoryEngine(tldr_store=mini_store)
+    isolated_engine.set_extra_commands(frozenset())
+    result = isolated_engine.analyze("FOO=bar git status")
+    # 'git' is known → no typo suggestion
+    assert result.typo_suggestion is None

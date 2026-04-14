@@ -1,0 +1,126 @@
+# ridinCLIgun — German / Deutsch catalog strings (baseline)
+# Extracted from command_catalog.json. Keys: family_id.pattern_index
+
+[rm.0]
+summary = "Rekursives erzwungenes Löschen — entfernt Dateien unwiderruflich ohne Rückfrage."
+suggestion = "Verwenden Sie 'rm -ri' für interaktive Bestätigung oder 'trash', um Dateien in den Papierkorb zu verschieben."
+
+[rm.1]
+summary = "Rekursives Löschen — entfernt komplette Verzeichnisbäume."
+suggestion = "Prüfen Sie den Zielpfad sorgfältig. Erwägen Sie 'rm -ri' für eine Bestätigung."
+
+[rm.2]
+summary = "Löschen von Root, Home oder allem im aktuellen Verzeichnis."
+suggestion = "Das ist mit höchster Wahrscheinlichkeit nicht beabsichtigt. Geben Sie das Ziel sehr genau an."
+
+[chmod.0]
+summary = "Setzt rekursiv weltweite Lese-/Schreib-/Ausführungsrechte."
+suggestion = "Verwenden Sie spezifische Berechtigungen (z. B. 755 für Verzeichnisse, 644 für Dateien). Vermeiden Sie 777."
+
+[chmod.1]
+summary = "Setzt weltweite Lese-/Schreib-/Ausführungsrechte."
+suggestion = "755 (Verzeichnisse) oder 644 (Dateien) ist in der Regel ausreichend. 777 ist ein Sicherheitsrisiko."
+
+[curl_pipe.0]
+summary = "Lädt Code herunter und führt ihn direkt aus — ohne Möglichkeit zur vorherigen Prüfung."
+suggestion = "Laden Sie das Skript zuerst herunter, prüfen Sie es, und führen Sie es dann aus: curl -o script.sh URL && less script.sh && bash script.sh"
+
+[dd.0]
+summary = "Schreibt direkt auf ein Gerät — kann Ihre Festplatte überschreiben."
+suggestion = "Prüfen Sie das Zielgerät dreifach. 'of=/dev/sda' zerstört Ihre Systemfestplatte."
+
+[sudo.0]
+summary = "Rekursives erzwungenes Löschen mit Root-Rechten — maximales Schadenspotenzial."
+suggestion = "Äußerste Vorsicht. Erwägen Sie, den Befehl zuerst ohne sudo auszuführen, um zu sehen, was gelöscht würde."
+
+[sudo.1]
+summary = "Ändert Eigentümer oder Berechtigungen mit Root-Rechten."
+suggestion = "Stellen Sie sicher, dass der richtige Pfad angegeben ist. Rekursive Änderungen können Ihr System beschädigen."
+
+[git_destructive.0]
+summary = "Force Push überschreibt die Remote-Historie — andere Mitwirkende verlieren ihre Arbeit."
+suggestion = "Verwenden Sie stattdessen 'git push --force-with-lease' — der Befehl schlägt fehl, wenn jemand anderes gepusht hat."
+
+[git_destructive.1]
+summary = "Hard Reset verwirft alle nicht übernommenen Änderungen unwiderruflich."
+suggestion = "Erwägen Sie zuerst 'git stash', um Ihre Änderungen zu sichern, oder verwenden Sie 'git reset --soft'."
+
+[git_destructive.2]
+summary = "Entfernt nicht versionierte Dateien unwiderruflich."
+suggestion = "Führen Sie zuerst 'git clean -n' aus (Trockenlauf), um zu sehen, was gelöscht würde."
+
+[network.0]
+summary = "Startet einen HTTP-Server, der das aktuelle Verzeichnis im Netzwerk freigibt."
+suggestion = "Binden Sie nur an localhost: python -m http.server --bind 127.0.0.1"
+
+[network.1]
+summary = "Macht einen lokalen Dienst öffentlich im Internet zugänglich."
+suggestion = "Stellen Sie sicher, dass Sie wissen, welchen Dienst Sie freigeben und wer darauf zugreifen kann."
+
+[env_secrets.0]
+summary = "Gibt sensible Umgebungsvariablen aus — kann in Logs oder der Historie erscheinen."
+suggestion = "Vermeiden Sie das Ausgeben von Geheimnissen. Verwenden Sie 'printenv VAR | wc -c', um das Vorhandensein zu prüfen, ohne den Wert preiszugeben."
+
+[env_secrets.1]
+summary = "Setzt Geheimnisse als Umgebungsvariablen — erscheint in der Shell-Historie."
+suggestion = "Verwenden Sie stattdessen eine .env-Datei oder einen Secrets-Manager. Stellen Sie ein Leerzeichen voran, um die Historie zu umgehen (wenn HISTCONTROL=ignorespace)."
+
+[mkfs.0]
+summary = "Das Erstellen eines Dateisystems zerstört alle Daten auf der Zielpartition."
+suggestion = "Überprüfen Sie das Zielgerät mit 'lsblk', bevor Sie den Befehl ausführen. Dieser Vorgang ist unwiderruflich."
+
+[fork_bomb.0]
+summary = "Fork-Bomb — erzeugt Prozesse, bis das System nicht mehr reagiert."
+suggestion = "Dies wird Ihr System zum Absturz bringen. Falls versehentlich ausgeführt, verwenden Sie 'killall' von einem anderen Terminal."
+
+[disk_overwrite.0]
+summary = "Überschreibt Dateien sicher — Daten sind nach shred nicht wiederherstellbar."
+suggestion = "Überprüfen Sie das Ziel. Im Gegensatz zu 'rm' können mit shred überschriebene Daten nicht wiederhergestellt werden."
+
+[disk_overwrite.1]
+summary = "Löscht Dateisystem-Signaturen von einem Gerät."
+suggestion = "Überprüfen Sie das Gerät mit 'lsblk'. Dadurch werden Partitionen unkenntlich."
+
+[ssh_and_keys.0]
+summary = "Operiert auf SSH-Schlüsseln — kann Schlüsselmaterial offenlegen oder überschreiben."
+suggestion = "Sichern Sie Ihre Schlüssel vor Änderungen. Geben Sie niemals private Schlüssel weiter."
+
+[ssh_and_keys.1]
+summary = "Überträgt Dateien über SSH — prüfen Sie Ziel und Richtung."
+suggestion = "Überprüfen Sie Quelle und Ziel sorgfältig, um das Überschreiben von Remote-Dateien zu vermeiden."
+
+[iptables_firewall.0]
+summary = "Ändert Firewall-Regeln — kann Sie aussperren oder Dienste freigeben."
+suggestion = "Testen Sie Regeln mit Zeitlimit: 'iptables -A ... && sleep 60 && iptables -D ...'"
+
+[package_managers.0]
+summary = "Systemweites Installieren von Python-Paketen kann Betriebssystem-Abhängigkeiten beschädigen."
+suggestion = "Verwenden Sie eine virtuelle Umgebung: 'python -m venv .venv && source .venv/bin/activate'"
+
+[package_managers.1]
+summary = "Aktualisiert alle Homebrew-Pakete gleichzeitig — kann zu inkompatiblen Änderungen führen."
+suggestion = "Aktualisieren Sie gezielt einzelne Pakete: 'brew upgrade <package>'"
+
+[system_files.0]
+summary = "Schreibt in Systemkonfigurationsdateien — kann Ihr System beschädigen."
+suggestion = "Erstellen Sie immer vorher eine Sicherung: 'sudo cp /etc/file /etc/file.bak'"
+
+[system_files.1]
+summary = "Ändert Authentifizierungs- oder Sudo-Konfiguration."
+suggestion = "Verwenden Sie 'visudo' (nicht einen direkten Editor), um sich nicht auszusperren."
+
+[docker.0]
+summary = "Entfernt alle ungenutzten Docker-Ressourcen — kann Daten-Volumes löschen."
+suggestion = "Führen Sie den Befehl zuerst ohne '-a' aus, oder nutzen Sie 'docker system df', um zu sehen, was entfernt würde."
+
+[docker.1]
+summary = "Startet Container im privilegierten Modus — voller Zugriff auf den Host."
+suggestion = "Vermeiden Sie --privileged, sofern nicht zwingend erforderlich. Verwenden Sie --cap-add für spezifische Fähigkeiten."
+
+[history_sensitive.0]
+summary = "Liest die Shell-Historie — kann Passwörter und sensible Befehle enthalten."
+suggestion = "Suchen Sie gezielt nach bestimmten Einträgen, anstatt die gesamte Historie auszugeben."
+
+[history_sensitive.1]
+summary = "Liest sensible Anmeldedaten- oder Schlüsseldateien."
+suggestion = "Seien Sie vorsichtig mit der Ausgabe — leiten Sie diese nicht in Logs um und fügen Sie sie nicht in Chats ein."

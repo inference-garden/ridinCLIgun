@@ -75,8 +75,9 @@ def test_settings_toggle_updates_config(settings_config):
     screen = SettingsScreen(settings_config)
     assert not settings_config.ai_enabled_default
 
-    # Move cursor to ai_enabled_default (index 0) and toggle
-    screen._cursor = 0
+    # Find the ai_enabled_default item index
+    ai_idx = next(i for i, item in enumerate(screen._items) if item["key"] == "ai_enabled_default")
+    screen._cursor = ai_idx
     screen._toggle_current()
 
     assert settings_config.ai_enabled_default
@@ -86,8 +87,9 @@ def test_settings_toggle_persists_to_file(settings_config):
     """Toggling a setting should write to config.toml."""
     screen = SettingsScreen(settings_config)
 
-    # Toggle ai_enabled_default
-    screen._cursor = 0
+    # Find and toggle ai_enabled_default
+    ai_idx = next(i for i, item in enumerate(screen._items) if item["key"] == "ai_enabled_default")
+    screen._cursor = ai_idx
     screen._toggle_current()
 
     # Read config.toml and check
@@ -113,20 +115,33 @@ def test_settings_toggle_redaction_preview(settings_config):
     assert "show_redaction_preview = false" in text
 
 
-def test_settings_info_items_not_toggleable(settings_config):
-    """Info items (provider, model) should not be toggleable."""
+def test_settings_provider_model_are_action_items(settings_config):
+    """Provider and model items should be 'action' type (navigable, Enter opens model selector)."""
     screen = SettingsScreen(settings_config)
-    info_items = [i for i in screen._items if i["type"] == "info"]
-    assert len(info_items) >= 1
+    action_items = [i for i in screen._items if i["type"] == "action"]
+    keys = {i["key"] for i in action_items}
+    assert "provider_kind" in keys
+    assert "model" in keys
 
-    # Try toggling an info item — should be a no-op
+
+def test_settings_action_items_have_model_select_action(settings_config):
+    """Action items for provider/model must carry action='model_select'."""
+    screen = SettingsScreen(settings_config)
+    for item in screen._items:
+        if item["key"] in ("provider_kind", "model"):
+            assert item["action"] == "model_select"
+
+
+def test_settings_action_items_not_toggleable(settings_config):
+    """Action items (provider, model) should not respond to _toggle_current."""
+    screen = SettingsScreen(settings_config)
     for i, item in enumerate(screen._items):
-        if item["type"] == "info":
+        if item["type"] == "action":
             screen._cursor = i
             break
 
     before = screen._items[screen._cursor]["value"]
-    screen._toggle_current()
+    screen._toggle_current()  # should be a no-op for non-toggle items
     assert screen._items[screen._cursor]["value"] == before
 
 

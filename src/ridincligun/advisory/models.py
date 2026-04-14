@@ -12,6 +12,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+# Re-export tldr types so callers only need to import from models
+from ridincligun.advisory.tldr_store import TldrExample, TldrPage  # noqa: F401
+
 
 class RiskLevel(Enum):
     """Risk severity levels for command warnings."""
@@ -35,10 +38,18 @@ class Warning:
 
 @dataclass
 class ReviewResult:
-    """The combined result of analyzing a command."""
+    """The combined result of analyzing a command.
+
+    Fields added in v0.4 (4.6):
+    - ``tldr_page``: tldr documentation for the command, if found.
+    - ``typo_suggestion``: suggested correction when the command name is
+      unrecognised and a close match exists (Levenshtein ≤ 2).
+    """
 
     command: str
     warnings: list[Warning] = field(default_factory=list)
+    tldr_page: TldrPage | None = field(default=None)
+    typo_suggestion: str | None = field(default=None)
 
     @property
     def highest_risk(self) -> RiskLevel:

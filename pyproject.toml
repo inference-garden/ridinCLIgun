@@ -27,15 +27,17 @@ classifiers = [
 dependencies = [
     "textual>=0.80",
     "pyte>=0.8",
+    "pyperclip>=1.9",
     "python-dotenv>=1.0",
+    "pygments>=2.20",  # CVE-2026-4539 (ReDoS) fixed in 2.20; transitive via rich/textual
 ]
 
 [project.optional-dependencies]
 mistral = ["mistralai>=2.0"]
-anthropic = ["anthropic>=0.40"]
+anthropic = ["anthropic>=0.87"]  # CVE-2026-34450, CVE-2026-34452 fixed in 0.87
 openai = ["openai>=1.0"]
 dev = [
-    "pytest>=8.0",
+    "pytest>=9.0.3",  # CVE-2025-71176 fixed in 9.0.3
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
 ]
@@ -46,6 +48,9 @@ ridincligun = "ridincligun.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ridincligun"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"data" = "ridincligun/data"
 
 [tool.ruff]
 target-version = "py312"

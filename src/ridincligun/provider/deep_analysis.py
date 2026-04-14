@@ -266,10 +266,18 @@ def fit_script_to_context(
     return script_content[:max_chars], True
 
 
+_LANGUAGE_NAMES: dict[str, str] = {
+    "de": "German",
+    "fr": "French",
+    "en": "English",
+}
+
+
 def build_deep_analysis_prompt(
     url: str,
     script_content: str,
     truncated: bool = False,
+    locale: str = "en",
 ) -> str:
     """Build the prompt for deep script analysis."""
     parts = [f"Analyze this script downloaded from: {url}\n"]
@@ -280,6 +288,13 @@ def build_deep_analysis_prompt(
             "State this clearly in your SUMMARY (e.g. 'Partial analysis — "
             "script truncated'). Flag in CONCERNS that unreviewed code may "
             "contain additional actions.\n"
+        )
+    if locale and locale != "en":
+        lang_name = _LANGUAGE_NAMES.get(locale, locale)
+        parts.append(
+            f"IMPORTANT: Write all SUMMARY, ACTIONS, and CONCERNS content "
+            f"in {lang_name}. Keep the response format headers "
+            f"(RISK, SUMMARY, ACTIONS, CONCERNS) in English.\n"
         )
     parts.append(f"```\n{script_content}\n```")
     return "\n".join(parts)

@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import stat
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 # Max history file size before rotation (5 MB)
@@ -31,9 +31,11 @@ class HistoryEntry:
     source: str  # "local", "ai", "deep_analysis"
     risk: str  # "safe", "caution", "warning", "danger"
     summary: str
+    explanation: str = ""
     suggestion: str = ""
     provider: str = ""
     tokens: int = 0
+    has_full_detail: bool = True
 
     def to_dict(self) -> dict:
         """Serialize to a JSON-safe dict."""
@@ -43,6 +45,7 @@ class HistoryEntry:
             "src": self.source,
             "risk": self.risk,
             "summary": self.summary,
+            "explanation": self.explanation,
             "suggestion": self.suggestion,
             "provider": self.provider,
             "tokens": self.tokens,
@@ -94,6 +97,14 @@ class ReviewHistory:
 
         Returns entries in reverse chronological order (newest first).
         """
+        return self._read_entries(limit=n)
+
+    def read_all(self) -> list[HistoryEntry]:
+        """Read all history entries in reverse chronological order."""
+        return self._read_entries(limit=None)
+
+    def _read_entries(self, limit: int | None) -> list[HistoryEntry]:
+        """Read history entries newest-first, optionally capped at ``limit``."""
         if not self._file.exists():
             return []
 
@@ -102,27 +113,29 @@ class ReviewHistory:
             with open(self._file, encoding="utf-8") as f:
                 lines = f.readlines()
 
-            # Read from the end
             for line in reversed(lines):
                 line = line.strip()
                 if not line:
                     continue
                 try:
                     data = json.loads(line)
+                    has_full_detail = "explanation" in data
                     entries.append(HistoryEntry(
                         timestamp=data.get("ts", ""),
                         command=data.get("cmd", ""),
                         source=data.get("src", ""),
                         risk=data.get("risk", ""),
                         summary=data.get("summary", ""),
+                        explanation=data.get("explanation", ""),
                         suggestion=data.get("suggestion", ""),
                         provider=data.get("provider", ""),
                         tokens=data.get("tokens", 0),
+                        has_full_detail=has_full_detail,
                     ))
                 except (json.JSONDecodeError, KeyError):
                     continue  # Skip malformed entries
 
-                if len(entries) >= n:
+                if limit is not None and len(entries) >= limit:
                     break
 
             return entries
@@ -164,3 +177,69 @@ class ReviewHistory:
 def now_iso() -> str:
     """Current UTC timestamp in ISO format."""
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def filter_entries(
+    entries: list[HistoryEntry],
+    *,
+    search: str = "",
+    risk: str = "all",
+    date_preset: str = "all",
+    now: datetime | None = None,
+) -> list[HistoryEntry]:
+    """Filter history entries in memory for the browser UI.
+
+    Search is case-insensitive substring matching against command,
+    summary, and provider. Date presets are evaluated in local time.
+    """
+    normalized_search = search.strip().casefold()
+    normalized_risk = risk.strip().lower()
+    normalized_date = date_preset.strip().lower()
+    local_now = (now or datetime.now().astimezone()).astimezone()
+
+    filtered: list[HistoryEntry] = []
+    for entry in entries:
+        if normalized_risk not in ("", "all") and entry.risk.lower() != normalized_risk:
+            continue
+        if normalized_search:
+            haystack = " ".join(
+                part for part in (entry.command, entry.summary, entry.provider) if part
+            ).casefold()
+            if normalized_search not in haystack:
+                continue
+        if not _matches_date_preset(entry.timestamp, normalized_date, local_now):
+            continue
+        filtered.append(entry)
+    return filtered
+
+
+def _matches_date_preset(timestamp: str, preset: str, now: datetime) -> bool:
+    """Return whether a timestamp matches the selected date preset."""
+    if preset in ("", "all"):
+        return True
+
+    entry_dt = _parse_timestamp(timestamp)
+    if entry_dt is None:
+        return False
+
+    local_dt = entry_dt.astimezone()
+    if preset == "today":
+        return local_dt.date() == now.date()
+    if preset == "7d":
+        return local_dt >= now - timedelta(days=7)
+    if preset == "30d":
+        return local_dt >= now - timedelta(days=30)
+    return True
+
+
+def _parse_timestamp(timestamp: str) -> datetime | None:
+    """Best-effort parse for persisted ISO timestamps."""
+    if not timestamp:
+        return None
+    try:
+        parsed = datetime.fromisoformat(timestamp)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed

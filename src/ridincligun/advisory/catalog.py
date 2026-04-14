@@ -17,6 +17,7 @@ from importlib import resources
 from pathlib import Path
 
 from ridincligun.advisory.models import RiskLevel
+from ridincligun.i18n import t
 
 
 @dataclass(frozen=True)
@@ -64,18 +65,30 @@ def load_catalog(path: Path | None = None) -> CommandCatalog:
     for family in data.get("families", []):
         family_id = family["id"]
         family_name = family["name"]
-        for pattern in family.get("patterns", []):
+        for pat_idx, pattern in enumerate(family.get("patterns", [])):
             try:
                 compiled = re.compile(pattern["regex"])
                 risk = RiskLevel(pattern["risk"])
+
+                # Try i18n translation, fall back to JSON original
+                summary_key = f"{family_id}.{pat_idx}.summary"
+                suggestion_key = f"{family_id}.{pat_idx}.suggestion"
+                summary = t(summary_key)
+                suggestion = t(suggestion_key)
+                # If t() returned the key itself, use the JSON original
+                if summary == summary_key:
+                    summary = pattern["summary"]
+                if suggestion == suggestion_key:
+                    suggestion = pattern["suggestion"]
+
                 catalog.patterns.append(
                     CatalogPattern(
                         family_id=family_id,
                         family_name=family_name,
                         regex=compiled,
                         risk=risk,
-                        summary=pattern["summary"],
-                        suggestion=pattern["suggestion"],
+                        summary=summary,
+                        suggestion=suggestion,
                     )
                 )
             except (re.error, ValueError):

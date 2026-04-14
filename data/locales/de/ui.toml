@@ -1,0 +1,272 @@
+# ridinCLIgun — German / Deutsch UI strings
+# All user-facing text. Keys referenced via t("section.key").
+
+# ── Toast messages ───────────────────────────────────────────────
+
+[toast]
+ai_on = "KI-Prüfung: ein"
+ai_off = "KI-Prüfung: aus"
+ai_on_no_key = "KI-Prüfung: ein — kein API key"
+secret_on = "Geheimmodus: ein"
+secret_off = "Geheimmodus: aus"
+shell_restarted = "Shell neu gestartet."
+copied = "{source} in Zwischenablage kopiert."
+nothing_to_copy = "Nichts zum Kopieren ausgewählt."
+nothing_to_copy_empty = "Nichts zum Kopieren."
+copy_failed = "Kopieren fehlgeschlagen: {error}"
+pasted = "{count} Zeichen eingefügt."
+clipboard_empty = "Zwischenablage ist leer."
+paste_failed = "Einfügen fehlgeschlagen: {error}"
+review_cancelled = "Prüfung abgebrochen."
+model_cancelled = "Modellauswahl abgebrochen."
+connected = "✓ Verbunden mit {provider}"
+
+# ── Welcome / advisory pane ─────────────────────────────────────
+
+[welcome]
+title = "ridinCLIgun"
+tagline = "Ihr Shell-Begleiter."
+motto = "Berät, handelt nie."
+help_hint = "Ctrl+G → H  Hilfe anzeigen"
+
+# ── Onboarding (first run) ──────────────────────────────────────
+
+[onboarding]
+title = "Willkommen bei ridinCLIgun"
+tagline = "Ihr Shell-Begleiter."
+motto = "Berät, handelt nie."
+shortcuts_title = "Tastenkürzel:"
+shortcut_review = "Ctrl+G, R   KI-Prüfung"
+shortcut_help = "Ctrl+G, ?   Befehlshilfe"
+shortcut_settings = "Ctrl+G, G   Einstellungen"
+shortcut_all = "Ctrl+G, H   Alle Tastenkürzel"
+setup_title = "KI einrichten:"
+setup_hint = "Ctrl+G, G → Anbieter"
+setup_detail = "um Ihren API key hinzuzufügen."
+start_hint = "Beginnen Sie zu tippen."
+
+# ── Help overlay ─────────────────────────────────────────────────
+
+[help]
+title = "Tastenkürzel"
+quit = "Beenden"
+divider_left = "Trenner links"
+divider_right = "Trenner rechts"
+leader_title = "Ctrl+G Leader-Taste:"
+review = "KI-Prüfung des Befehls"
+insert = "KI-Vorschlag einfügen"
+history = "Prüfverlauf öffnen"
+cmd_help = "Befehlshilfe --help"
+toggle_ai = "KI ein-/ausschalten"
+model_select = "Modellauswahl"
+settings = "Einstellungen"
+toggle_secret = "Geheimmodus umschalten"
+this_help = "Diese Hilfe"
+restart_shell = "Shell neu starten"
+debug = "Debug-Informationen"
+quit_fallback = "Beenden (Ausweich)"
+dismiss = "Escape zum Schließen."
+
+# ── Secrets warning ─────────────────────────────────────────────
+
+[secrets]
+title = "🔒 Geheimnisse erkannt"
+auto_blocked = "KI-Prüfung automatisch blockiert."
+warning_line1 = "Geheimnisse sollten nicht an KI gesendet werden."
+warning_line2 = "Entfernen Sie Geheimnisse, bevor Sie eine"
+warning_line3 = "KI-Prüfung anfordern."
+detected_in_command = "🔒 Geheimnisse im Befehl erkannt."
+send_anyway = "Senden an KI kann Zugangsdaten offenlegen."
+confirm_send = "Drücken Sie erneut Ctrl+G, R zum Senden."
+detected_in_clipboard = "🔒 Geheimnisse in Zwischenablage erkannt"
+clipboard_found = "Gefunden: {kinds}"
+clipboard_confirm = "V drücken zum Einfügen,"
+clipboard_cancel = "andere Taste zum Abbrechen."
+
+# ── Redaction preview ───────────────────────────────────────────
+
+[redaction]
+title = "🔍 Schwärzungsvorschau"
+confirm = "Ctrl+G, R zum Bestätigen und Senden."
+cancel = "Andere Taste zum Abbrechen."
+original = "Original:"
+sent_to_ai = "An KI gesendet:"
+masked = "Maskiert:"
+config_hint = "In [privacy]-Konfiguration abschaltbar."
+
+# ── AI review ───────────────────────────────────────────────────
+
+[review]
+title = "KI-Prüfung"
+loading = "🔍 Prüfe: {command}"
+asking = "Anfrage an {provider}..."
+insert_hint = "Ctrl+G, I zum Einfügen des Vorschlags."
+
+# ── Connection error ────────────────────────────────────────────
+
+[connection]
+title = "⚠ Verbindung fehlgeschlagen"
+unreachable = "{provider} nicht erreichbar."
+check_title = "Prüfen Sie:"
+check_network = "- Netzwerkverbindung"
+check_key = "- API key in ~/.config/ridincligun/.env"
+check_status = "- Statusseite des Anbieters"
+restart_hint1 = "Nach Aktualisierung des API key"
+restart_hint2 = "die App neu starten."
+local_active = "Lokale Hinweise weiterhin aktiv."
+
+# ── Notices (advisory pane) ─────────────────────────────────────
+
+[notice]
+ai_off = "KI ist aus. Umschalten mit Ctrl+G, A."
+secret_mode_on = "Geheimmodus ist ein — Befehl nicht gesendet.\nUmschalten mit Ctrl+G, S."
+no_api_key = "Kein API key konfiguriert.\nFügen Sie ANTHROPIC_API_KEY hinzu:\n~/.config/ridincligun/.env"
+no_command = "Kein Befehl zum Prüfen."
+no_suggestion = "Kein KI-Vorschlag vorhanden.\nFordern Sie zuerst eine Prüfung an (Ctrl+G, R)."
+extract_failed = "Konnte keinen Befehl aus dem\nKI-Vorschlag extrahieren."
+inserted = "Eingefügt: {suggestion}\n\nVor dem Ausführen prüfen."
+
+# ── Command help ────────────────────────────────────────────────
+
+[cmd_help]
+no_command = "Kein Befehl zum Nachschlagen.\nGeben Sie zuerst einen Befehl ein."
+looking_up = "Hilfe wird nachgeschlagen für: {cmd}"
+trying = "Versuche --help, -h, man..."
+not_found = "Keine Hilfe gefunden für: {cmd}\n\n--help, -h und man-Seite versucht."
+invalid_name = "Ungültiger Befehlsname: {cmd}\n\nHilfe kann nicht nachgeschlagen werden."
+cmd_not_found = "Befehl nicht gefunden: {cmd}\n\nStellen Sie sicher, dass er installiert und im PATH ist."
+timeout = "Hilfe-Nachschlagen abgelaufen (5s).\n\nDer Befehl ist möglicherweise interaktiv."
+help_failed = "Hilfe-Nachschlagen fehlgeschlagen: {error}"
+truncated = "... (gekürzt)"
+dismiss = "Escape zum Schließen."
+
+# ── Model selector ──────────────────────────────────────────────
+
+[model]
+title = "🔧 Modellauswahl"
+current = "Aktuell: {current}"
+select_hint = "1-{count} eingeben zur Auswahl."
+cancel_hint = "Andere Taste zum Abbrechen."
+apply_note = "Änderungen gelten sofort."
+persist_note = "In config.toml gespeichert."
+switched = "Gewechselt zu {name}"
+no_key = "⚠ Kein API key für {kind}."
+add_key = "{key_name} hinzufügen zu"
+env_path = "~/.config/ridincligun/.env"
+restart = "und neu starten."
+checking = "Verbindung wird geprüft..."
+
+# ── Deep analysis ───────────────────────────────────────────────
+
+[deep]
+fetching = "⏳ Skriptinhalt wird abgerufen..."
+fetch_failed = "⚠ Skriptabruf fehlgeschlagen"
+fetch_caution1 = "Das Skript konnte nicht zur Analyse abgerufen werden."
+fetch_caution2 = "Gehen Sie besonders vorsichtig vor — Inhalt unbekannt."
+script_fetched = "📄 Skript abgerufen: {size}"
+too_large = "⚠ Skript zu groß für Modellkontext"
+partial = "Teilanalyse — nicht der gesamte Code wurde geprüft."
+analyzing = "Inhalt wird analysiert..."
+analysis_title = "🔬 Skriptanalyse"
+analysis_failed = "⚠ Skriptanalyse fehlgeschlagen"
+partial_title = "⚠ TEILANALYSE"
+partial_line1 = "Skript überschreitet das Kontextfenster des Modells."
+partial_line2 = "Nicht geprüfter Code kann weitere"
+partial_line3 = "Aktionen enthalten. Prüfen Sie das"
+partial_line4 = "vollständige Skript manuell vor der Ausführung."
+
+# ── Status bar ──────────────────────────────────────────────────
+
+[status]
+ai_label = "KI: "
+secret_label = "Geheimnis: "
+version_label = "Version: "
+on = "ein"
+off = "aus"
+offline = "offline"
+error = "Fehler"
+leader_waiting = "⌨ Ctrl+G..."
+help_hint = "Ctrl+G → Hilfe"
+
+# ── Settings screen ─────────────────────────────────────────────
+
+[settings]
+title = "Einstellungen"
+section_ai = "KI"
+section_privacy = "Datenschutz"
+section_keys = "Verfügbare API-Keys"
+section_general = "Allgemein"
+ai_enabled = "KI beim Start aktiviert"
+provider_label = "Anbieter: {provider}"
+model_label = "Modell: {model}"
+review_mode_label = "Prüfmodus: {mode}"
+redaction_preview = "Schwärzungsvorschau vor KI-Prüfung anzeigen"
+clipboard_safety = "Vor dem Einfügen von Geheimnissen warnen"
+key_configured = "konfiguriert (...{suffix})"
+key_from_env = "aus Umgebung (...{suffix})"
+key_not_configured = "nicht konfiguriert"
+hint = "↑↓ navigieren  Leertaste umschalten  Enter bearbeiten/auswählen\n  ↵ bei Anbieter/Modell: Modellauswahl öffnen\n\n  ESC zum Beenden"
+key_input_title = "API key eingeben für {provider}"
+key_input_placeholder = "API key hier einfügen..."
+key_input_hint = "Enter zum Speichern  Escape zum Abbrechen"
+language_label = "Sprache: {language}"
+
+# ── Review modes ────────────────────────────────────────────────
+
+[modes]
+default = "Standard"
+explorer = "Entdeckermodus (für Kinder)"
+
+# ── History ─────────────────────────────────────────────────────
+
+[history]
+title = "📜 Prüfverlauf"
+count = "({count} aktuellste)"
+no_history = "Noch kein Prüfverlauf.\nVerlauf wird nach KI-Prüfungen aufgezeichnet."
+total = "Einträge gesamt: {total}"
+file_label = "Datei: {path}"
+search_label = "Suche"
+search_placeholder = "Befehl, Zusammenfassung, Anbieter"
+risk_label = "Risiko"
+date_label = "Datum"
+risk_all = "Alle"
+risk_safe = "Sicher"
+risk_caution = "Vorsicht"
+risk_warning = "Warnung"
+risk_danger = "Gefahr"
+date_all = "Alle"
+date_today = "Heute"
+date_7d = "7d"
+date_30d = "30d"
+list_title = "Treffer"
+detail_title = "Details"
+detail_command = "Befehl"
+detail_summary = "Zusammenfassung"
+detail_explanation = "Erklärung"
+detail_suggestion = "Vorschlag"
+detail_meta = "Metadaten"
+detail_risk = "Risiko"
+detail_source = "Quelle"
+detail_timestamp = "Zeit"
+detail_provider = "Anbieter"
+detail_tokens = "Tokens"
+source_ai = "KI-Prüfung"
+source_deep_analysis = "Tiefenanalyse"
+source_unknown = "Unbekannt"
+legacy_note = "Für diesen älteren Eintrag wurden keine vollständigen Details gespeichert."
+empty_title = "Keine passenden Verlaufseinträge."
+empty_hint = "Suche oder Filter anpassen."
+result_count = "{shown} angezeigt / {total} gesamt"
+hint = "Tab Fokus wechseln  ↑↓ Liste/Details  Bild↑/Bild↓ scrollen  C Vorschlag kopieren  Esc schließen"
+copy_source = "Vorschlag"
+copy_missing = "Kein Vorschlag zum Kopieren vorhanden."
+
+# ── Tippfehler-Erkennung (Hinweisbereich) ───────────────────────
+
+[typo]
+did_you_mean = "Meinten Sie: {suggestion}?"
+
+# ── Debug ───────────────────────────────────────────────────────
+
+[debug]
+title = "Debug-Informationen"

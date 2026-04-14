@@ -39,6 +39,7 @@ def test_leader_resolve_all_keys():
         "c": LeaderAction.COPY,
         "v": LeaderAction.PASTE,
         "i": LeaderAction.INSERT_SUGGESTION,
+        "k": LeaderAction.HISTORY,
         "?": LeaderAction.CMD_HELP,
         "m": LeaderAction.MODEL_SELECT,
     }

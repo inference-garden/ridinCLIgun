@@ -20,7 +20,7 @@ Open a [GitHub Issue](https://github.com/inference-garden/ridinCLIgun/issues). A
 - **Shell** (zsh, bash) and terminal emulator (Terminal.app, iTerm2, etc.)
 - **Steps to reproduce** — what you typed, what happened
 - **Expected behavior** — what should have happened
-- **Prompt customization** — do you use Starship, Oh My Zsh, Powerlevel10k? (known layout interactions exist)
+- **Prompt customization** — do you use Starship, Oh My Zsh, Powerlevel10k? Multi-cell emoji in prompts can cause layout artifacts.
 
 ### Suggest features
 
@@ -83,11 +83,13 @@ ridinCLIgun is a split-terminal TUI built with [Textual](https://textual.textual
 
 | Area | What it does |
 |---|---|
-| `advisory/` | Local pattern matching, risk engine, secret detection |
-| `provider/` | AI adapters (Anthropic, OpenAI, Mistral), prompt sanitization |
-| `ui/` | Shell pane, advisory pane, settings screen, status bar |
+| `advisory/` | Risk engine, regex pattern catalog, secret detection, tldr catalog store, typo detector |
+| `provider/` | AI adapters (Anthropic, OpenAI, Mistral), prompt templates, deep script analysis |
+| `ui/` | Shell pane, advisory pane, history browser, settings screen, status bar |
 | `shell/` | PTY subprocess, command extraction |
 | `shortcuts/` | Leader-key bindings (Ctrl+G prefix) |
+| `i18n.py` | Internationalization — EN/DE/FR string tables, locale detection |
+| `data/` | Bundled catalogs: command risk patterns, tldr-pages (EN/DE/FR), prompt templates, locale strings |
 
 See `docs/` in the repo for more detail.
 
@@ -101,12 +103,12 @@ By submitting a pull request, you agree that your contribution is licensed under
 
 ## Playground Rules
 
-Be decent to each other. Respect the humans (and the AIs). Stay courious.
+Be decent to each other. Respect the humans (and the AIs). Stay curious.
 That's it.
 
 Longer version:
 This is a self-aware playground.
-- Be kind. We were all beginners once. Some of us still are.
+- Be kind. We were all beginners once. Most of us still are.
 - Be patient. This project is maintained by one human and several AIs
   who occasionally hallucinate.
 - Have fun. This started as a curiosity project and that energy is sacred.
