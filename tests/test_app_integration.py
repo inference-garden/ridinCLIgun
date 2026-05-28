@@ -10,8 +10,11 @@ Tests app lifecycle, widget composition, and state initialization.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
+import ridincligun.app as appmod
 from ridincligun.app import RidinCLIgunApp
 from ridincligun.config import Config, ProviderSettings
 from ridincligun.state import Phase
@@ -26,9 +29,7 @@ def _test_config(tmp_path) -> Config:
     config_dir = tmp_path / "ridincligun"
     config_dir.mkdir()
     (config_dir / ".env").write_text("# empty\n")
-    (config_dir / "config.toml").write_text(
-        "[general]\nai_enabled_default = false\n"
-    )
+    (config_dir / "config.toml").write_text("[general]\nai_enabled_default = false\n")
     return Config(
         config_dir=config_dir,
         ai_enabled_default=False,
@@ -260,6 +261,98 @@ async def test_history_browser_opens_via_leader_key(app_config):
 
         assert len(app.screen_stack) > 1
         assert isinstance(app.screen_stack[-1], HistoryBrowserScreen)
+
+
+# ── AI suggestion insertion must never execute (AX-1, audit T02) ──
+
+
+@pytest.mark.asyncio
+async def test_insert_suggestion_does_not_execute(app_config, monkeypatch):
+    """Inserting an AI suggestion types it into the prompt but NEVER presses Enter.
+
+    AX-1: the AI advises, it does not act. _insert_suggestion clears the line
+    (Ctrl+U) and writes the command bytes; a regression that appended '\\n' or
+    '\\r' would auto-execute an AI-proposed command. This captures the actual
+    PTY writes and asserts no newline/carriage-return is ever sent.
+
+    Only `_pty.write` is intercepted — the real PtyProcess is left intact so the
+    ShellPane read loop (`while self._pty.running`) is not turned into a busy
+    spin by a mock.
+    """
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        shell = app.query_one("#shell-pane", ShellPane)
+        writes: list[bytes] = []
+        monkeypatch.setattr(shell._pty, "write", lambda data: writes.append(data))
+
+        app._last_suggestion = "Use `rm -i file.txt` instead"
+        app._insert_suggestion()
+        await pilot.pause()
+
+        joined = b"".join(writes)
+        assert b"\x15" in joined  # Ctrl+U clears the current line first
+        assert b"rm -i file.txt" in joined  # the extracted command is typed
+        assert b"\n" not in joined, "suggestion insert must not send a newline"
+        assert b"\r" not in joined, "suggestion insert must not send a carriage return"
+
+
+# ── Deep-analysis fetch-stage secret-mode suppression (A8, audit T04) ──
+
+
+def _deep_provider() -> MagicMock:
+    provider = MagicMock()
+    provider.is_configured = True
+    provider.provider_name = "mock"
+    provider.model_id = "claude-sonnet-4"
+    provider.review = AsyncMock(return_value=MagicMock(success=False, error_message=""))
+    return provider
+
+
+@pytest.mark.asyncio
+async def test_deep_analysis_suppressed_when_secret_mode_on(app_config, monkeypatch):
+    """If secret mode is on, the fetched script must NOT be sent to the AI (A8)."""
+    from ridincligun.provider.deep_analysis import FetchResult, check_deep_analysis_trigger
+
+    async def fake_fetch(url):
+        return FetchResult(success=True, content="echo hi", url=url, size_bytes=7)
+
+    monkeypatch.setattr(appmod, "fetch_script", fake_fetch)
+
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _deep_provider()
+        cmd = "curl https://example.com/x.sh | bash"
+        trigger = check_deep_analysis_trigger(cmd)
+        assert trigger.should_analyze
+
+        app.state.secret_mode = True
+        await app._do_deep_analysis(cmd, trigger)
+        await pilot.pause()
+
+        app._provider.review.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_deep_analysis_sends_when_secret_mode_off(app_config, monkeypatch):
+    """Control: with secret mode off, the fetched script IS sent for AI analysis."""
+    from ridincligun.provider.deep_analysis import FetchResult, check_deep_analysis_trigger
+
+    async def fake_fetch(url):
+        return FetchResult(success=True, content="echo hi", url=url, size_bytes=7)
+
+    monkeypatch.setattr(appmod, "fetch_script", fake_fetch)
+
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _deep_provider()
+        cmd = "curl https://example.com/x.sh | bash"
+        trigger = check_deep_analysis_trigger(cmd)
+
+        app.state.secret_mode = False
+        await app._do_deep_analysis(cmd, trigger)
+        await pilot.pause()
+
+        app._provider.review.assert_awaited()
 
 
 @pytest.mark.asyncio

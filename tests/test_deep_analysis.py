@@ -2,20 +2,26 @@
 # Copyright (C) 2026 inference-garden
 # ridinCLIgun — Tests for deep script analysis
 
-"""Tests for the deep analysis module (URL extraction, trigger detection)."""
+"""Tests for the deep analysis module (URL extraction, trigger detection, fetch)."""
+
+import urllib.request
 
 import pytest
 
 from ridincligun.provider.deep_analysis import (
+    _FETCH_TIMEOUT,
+    _MAX_SCRIPT_SIZE,
     DEEP_ANALYSIS_SYSTEM,
     FetchResult,
     _get_context_limit,
     build_deep_analysis_prompt,
     check_deep_analysis_trigger,
+    fetch_script,
     fit_script_to_context,
 )
 
 # ── Trigger detection ──────────────────────────────────────────────
+
 
 @pytest.mark.parametrize(
     "command",
@@ -57,17 +63,13 @@ def test_empty_command_no_trigger() -> None:
 
 
 def test_trigger_extracts_url() -> None:
-    trigger = check_deep_analysis_trigger(
-        "curl https://example.com/install.sh | bash"
-    )
+    trigger = check_deep_analysis_trigger("curl https://example.com/install.sh | bash")
     assert trigger.url == "https://example.com/install.sh"
 
 
 def test_trigger_cleans_url_trailing_pipe() -> None:
     """URL should not include trailing pipe or quotes."""
-    trigger = check_deep_analysis_trigger(
-        "curl 'https://example.com/s.sh' | bash"
-    )
+    trigger = check_deep_analysis_trigger("curl 'https://example.com/s.sh' | bash")
     assert trigger.should_analyze
     assert "|" not in trigger.url
     assert "'" not in trigger.url
@@ -79,6 +81,7 @@ def test_trigger_reason_not_empty() -> None:
 
 
 # ── Prompt building ────────────────────────────────────────────────
+
 
 def test_deep_analysis_prompt_contains_url() -> None:
     prompt = build_deep_analysis_prompt(
@@ -190,3 +193,83 @@ def test_fit_script_model_aware_limit() -> None:
     content_default, trunc_default = fit_script_to_context(script, "")
     assert not trunc_claude  # Fits in Claude
     assert trunc_default  # Doesn't fit in default/small model
+
+
+# ── fetch_script security boundary (audit T04, networkless) ───────
+
+
+class _FakeResp:
+    """Minimal stand-in for the urlopen context manager."""
+
+    def __init__(self, data: bytes, content_type: str = "text/plain") -> None:
+        self._data = data
+        self.headers = {"Content-Type": content_type}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, n: int) -> bytes:
+        return self._data[:n]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/passwd",
+        "ftp://host/payload.sh",
+        "gopher://host/x",
+        "data:text/plain,echo hi",
+        "//host/relative",
+    ],
+)
+async def test_fetch_script_rejects_non_http_schemes(url, monkeypatch):
+    """Only http/https may be fetched; rejected schemes must not touch the network."""
+
+    def _no_network(*args, **kwargs):
+        raise AssertionError(f"network must not be touched for {url!r}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _no_network)
+
+    result = await fetch_script(url)
+
+    assert not result.success
+    assert "HTTP" in result.error
+
+
+@pytest.mark.asyncio
+async def test_fetch_script_uses_timeout_and_returns_content(monkeypatch):
+    """A valid https fetch passes the configured timeout and returns decoded content."""
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["timeout"] = timeout
+        captured["url"] = req.full_url
+        return _FakeResp(b"echo hello")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    result = await fetch_script("https://example.com/install.sh")
+
+    assert result.success
+    assert result.content == "echo hello"
+    assert not result.truncated
+    assert captured["timeout"] == _FETCH_TIMEOUT
+    assert captured["url"] == "https://example.com/install.sh"
+
+
+@pytest.mark.asyncio
+async def test_fetch_script_enforces_size_cap(monkeypatch):
+    """Oversized responses are truncated to the cap, not pulled in unbounded."""
+    big = b"a" * (_MAX_SCRIPT_SIZE + 500)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: _FakeResp(big))
+
+    result = await fetch_script("https://example.com/big.sh")
+
+    assert result.success
+    assert result.truncated
+    assert result.size_bytes == _MAX_SCRIPT_SIZE
+    assert len(result.content) <= _MAX_SCRIPT_SIZE

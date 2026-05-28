@@ -12,10 +12,13 @@ script to a shell (curl|bash, wget|sh, etc.), this module:
 
 SECURITY:
 - Only fetches HTTP/HTTPS URLs
-- Size-limited (max 64KB) to prevent memory abuse
-- Timeout-limited (5s) to prevent hanging
+- Size-limited (max 1MB, see _MAX_SCRIPT_SIZE) to prevent memory abuse
+- Timeout-limited (15s, see _FETCH_TIMEOUT) to prevent hanging
 - Content is sent to the AI for analysis, never executed
 - User sees exactly what is being fetched (URL shown in UI)
+- KNOWN GAP (B-S09): http:// is accepted, no SSRF/redirect guard, and the
+  secret-mode check runs only after the fetch returns. Do not widen the fetch
+  cap/timeout further until B-S09 lands.
 """
 
 from __future__ import annotations

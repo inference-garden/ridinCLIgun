@@ -2,139 +2,173 @@
 # Copyright (C) 2026 inference-garden
 # ridinCLIgun — Tests for secret mode
 
-"""Tests for secret mode guards — ensures no data leaks to AI when active."""
+"""Tests for secret mode guards — ensures no data leaks to AI when active.
+
+Audit T01: these tests exercise the REAL app methods (`_trigger_ai_review`,
+`_do_ai_review`, `action_toggle_secret`) via Textual headless mode and a mock
+provider. They are written so that silently removing a guard in `app.py` makes
+a test fail — the previous versions re-implemented ("mirrored") the guard logic
+locally and would have stayed green through a real regression.
+"""
+
+from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ridincligun.provider.manager import ProviderManager
-from ridincligun.state import AppState, Phase
-
-# ── Secret mode blocks review dispatch ────────────────────────────
-
-
-def test_secret_mode_blocks_review_call():
-    """When secret_mode is True, the provider must never be called."""
-    state = AppState()
-    state.secret_mode = True
-    state.ai_enabled = True
-
-    mock_adapter = MagicMock()
-    mock_adapter.is_configured = True
-    mock_adapter.name = "mock"
-    manager = ProviderManager(mock_adapter)
-
-    # Simulate the guard logic from _trigger_ai_review
-    if state.secret_mode:
-        called = False
-    else:
-        asyncio.run(manager.review("sensitive-command"))
-        called = True
-
-    assert not called, "Provider was called despite secret mode being on"
+import ridincligun.app as appmod
+from ridincligun.app import RidinCLIgunApp
+from ridincligun.config import Config, ProviderSettings
+from ridincligun.state import Phase
 
 
-def test_secret_mode_off_allows_review():
-    """When secret_mode is False, the provider should be reachable."""
-    state = AppState()
-    state.secret_mode = False
-    state.ai_enabled = True
+def _test_config(tmp_path) -> Config:
+    config_dir = tmp_path / "ridincligun"
+    config_dir.mkdir()
+    (config_dir / ".env").write_text("# empty\n")
+    (config_dir / "config.toml").write_text("[general]\nai_enabled_default = false\n")
+    return Config(
+        config_dir=config_dir,
+        ai_enabled_default=False,
+        api_key="",
+        provider=ProviderSettings(),
+        language="en",
+    )
 
-    # Just verify the state gate opens
-    assert not state.secret_mode
+
+@pytest.fixture
+def app_config(tmp_path):
+    return _test_config(tmp_path)
 
 
-# ── Race condition: secret mode enabled after request sent ────────
+def _mock_provider() -> MagicMock:
+    """A configured provider whose review() is awaitable and counted."""
+    provider = MagicMock()
+    provider.is_configured = True
+    provider.provider_name = "mock"
+    provider.review = AsyncMock(return_value=MagicMock(success=False, error_message=""))
+    return provider
+
+
+# ── Secret mode blocks review dispatch (real app path) ────────────
 
 
 @pytest.mark.asyncio
-async def test_review_result_suppressed_when_secret_mode_enabled_during_flight():
-    """If secret mode is toggled ON while a review is in-flight,
-    the result must be discarded — not displayed."""
-    state = AppState()
-    state.secret_mode = False
-    state.phase = Phase.REVIEW_LOADING
+async def test_secret_mode_blocks_real_review_dispatch(app_config, monkeypatch):
+    """With secret mode ON, F2/_trigger_ai_review must never reach the provider.
 
-    # Simulate: review returns, but secret mode was toggled on in the meantime
-    state.secret_mode = True
+    A real command is forced via extract_current_command so that the ONLY thing
+    preventing dispatch is the secret-mode guard — if that guard is removed, the
+    provider would be called and this test fails.
+    """
+    monkeypatch.setattr(appmod, "extract_current_command", lambda screen: "echo hi")
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _mock_provider()
+        app.state.ai_enabled = True
+        app.state.secret_mode = True
 
-    # This mirrors the guard in _do_ai_review
-    if state.secret_mode:
-        state.phase = Phase.TYPING
-        result_displayed = False
-    else:
-        result_displayed = True
+        app._trigger_ai_review()
+        await pilot.pause()
 
-    assert not result_displayed, "Review result was displayed despite secret mode"
-    assert state.phase == Phase.TYPING, "Phase should reset to IDLE"
-
-
-@pytest.mark.asyncio
-async def test_inflight_task_cancelled_on_secret_toggle():
-    """Toggling secret mode on must cancel any in-flight review task."""
-    # Create a mock task that tracks cancellation (use MagicMock, not
-    # AsyncMock, because task.done() must return a plain bool)
-    mock_task = MagicMock()
-    mock_task.done.return_value = False
-
-    state = AppState()
-    state.secret_mode = False
-    review_task = mock_task
-
-    # Simulate toggling secret mode on (mirrors LeaderAction.TOGGLE_SECRET)
-    state.secret_mode = True
-    if state.secret_mode and review_task and not review_task.done():
-        review_task.cancel()
-        review_task = None
-
-    mock_task.cancel.assert_called_once()
-    assert review_task is None
-
-
-# ── Generation counter: stale responses discarded ────────────────
+        app._provider.review.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_generation_counter_discards_stale_response():
-    """If review_generation changes during flight (secret mode toggled
-    or new review started), the result must be discarded."""
-    review_generation = 1
-    gen_at_launch = review_generation
+async def test_review_dispatched_when_secret_mode_off(app_config, monkeypatch):
+    """Control: with secret mode OFF the real dispatch path DOES call the provider.
 
-    # Simulate: secret mode toggled during flight → generation incremented
-    review_generation += 1
+    Without this, the block-test above could pass simply because the path is
+    unreachable. This proves the path is live.
+    """
+    monkeypatch.setattr(appmod, "extract_current_command", lambda screen: "echo hi")
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _mock_provider()
+        app.state.ai_enabled = True
+        app.state.secret_mode = False
 
-    # This mirrors the guard in _do_ai_review
-    result_displayed = gen_at_launch == review_generation
-    assert not result_displayed, "Stale response was not discarded"
+        app._trigger_ai_review()
+        await pilot.pause()
+
+        app._provider.review.assert_awaited()
 
 
-@pytest.mark.asyncio
-async def test_generation_counter_allows_current_response():
-    """If review_generation has not changed, the response is current
-    and should be displayed."""
-    review_generation = 1
-    gen_at_launch = review_generation
-
-    # No toggle happened — generation unchanged
-    result_displayed = gen_at_launch == review_generation
-    assert result_displayed, "Current response was incorrectly discarded"
+# ── In-flight review is cancelled when secret mode is toggled on ──
 
 
 @pytest.mark.asyncio
-async def test_secret_toggle_increments_generation():
-    """Toggling secret mode on must increment the review generation counter."""
-    review_generation = 0
-    secret_mode = False
+async def test_secret_toggle_cancels_inflight_review(app_config, monkeypatch):
+    """Toggling secret mode ON cancels the in-flight review task and bumps generation."""
+    monkeypatch.setattr(appmod, "extract_current_command", lambda screen: "echo hi")
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        started = asyncio.Event()
+        release = asyncio.Event()
 
-    # Simulate toggling secret mode on (mirrors LeaderAction.TOGGLE_SECRET)
-    secret_mode = True
-    if secret_mode:
-        review_generation += 1
+        async def slow_review(*args, **kwargs):
+            started.set()
+            await release.wait()
+            return MagicMock(success=False, error_message="")
 
-    assert review_generation == 1, "Generation counter not incremented"
+        provider = _mock_provider()
+        provider.review = slow_review
+        app._provider = provider
+        app.state.ai_enabled = True
+        app.state.secret_mode = False
+
+        app._trigger_ai_review()
+        await asyncio.wait_for(started.wait(), timeout=2)
+        assert app._review_task is not None and not app._review_task.done()
+        gen_in_flight = app._review_generation
+
+        # F5 — toggle secret mode ON
+        app.action_toggle_secret()
+
+        assert app.state.secret_mode
+        assert app._review_generation == gen_in_flight + 1
+        assert app._review_task is None, "in-flight review task was not cancelled/cleared"
+
+        release.set()
+        await pilot.pause()
+
+
+# ── Stale / suppressed results are discarded in _do_ai_review ─────
+
+
+@pytest.mark.asyncio
+async def test_do_ai_review_discards_stale_generation(app_config):
+    """_do_ai_review must not render a result whose generation no longer matches."""
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _mock_provider()
+        app._review_generation = 5
+
+        # Launched at generation 4, but a newer review (or toggle) advanced to 5.
+        await app._do_ai_review("echo hi", generation=4, system_prompt="")
+        await pilot.pause()
+
+        app._provider.review.assert_awaited()  # the call happened
+        assert app.state.phase == Phase.TYPING  # but the result was discarded
+        assert not app._ai_review_showing
+
+
+@pytest.mark.asyncio
+async def test_do_ai_review_discards_when_secret_mode_on(app_config):
+    """Even at the matching generation, a result is discarded if secret mode is on."""
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _mock_provider()
+        app._review_generation = 5
+        app.state.secret_mode = True
+
+        await app._do_ai_review("echo hi", generation=5, system_prompt="")
+        await pilot.pause()
+
+        assert app.state.phase == Phase.TYPING
+        assert not app._ai_review_showing
 
 
 # ── Secret mode does not affect local advisory ────────────────────
@@ -143,13 +177,13 @@ async def test_secret_toggle_increments_generation():
 def test_secret_mode_does_not_block_local_advisory():
     """Secret mode only blocks AI (network) calls.
     The local advisory engine should still work."""
+    from ridincligun.advisory.engine import AdvisoryEngine
+    from ridincligun.state import AppState
+
     state = AppState()
     state.secret_mode = True
 
     # The local engine has no secret_mode check — it's purely offline.
-    # This test documents that design decision.
-    from ridincligun.advisory.engine import AdvisoryEngine
-
     engine = AdvisoryEngine()
     result = engine.analyze("rm -rf /")
     assert result is not None

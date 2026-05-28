@@ -139,11 +139,7 @@ def test_malformed_lines_skipped(history, history_file):
     ts1 = "2026-01-01T00:00:01+00:00"
     ls_json = f'{{"cmd": "ls", "src": "ai", "risk": "safe", "summary": "ok", "ts": "{ts0}"}}'
     pwd_json = f'{{"cmd": "pwd", "src": "ai", "risk": "safe", "summary": "ok", "ts": "{ts1}"}}'
-    history_file.write_text(
-        f"{ls_json}\n"
-        "this is not json\n"
-        f"{pwd_json}\n"
-    )
+    history_file.write_text(f"{ls_json}\nthis is not json\n{pwd_json}\n")
     entries = history.read_recent(10)
     assert len(entries) == 2
 
@@ -251,8 +247,7 @@ def test_filter_entries_combines_all_filters():
 
 def test_filter_entries_scale_smoke():
     entries = [
-        _make_entry(command=f"cmd-{i}", summary=f"summary {i}", risk="safe")
-        for i in range(1100)
+        _make_entry(command=f"cmd-{i}", summary=f"summary {i}", risk="safe") for i in range(1100)
     ]
 
     filtered = filter_entries(entries, search="cmd-1099", risk="safe")
@@ -261,7 +256,7 @@ def test_filter_entries_scale_smoke():
 
 
 def test_file_permissions(history, history_file):
-    """History file gets restrictive permissions."""
+    """History file is owner-only: group/other bits MUST be clear (A4, audit T06)."""
     import stat
 
     history.append(_make_entry())
@@ -269,3 +264,27 @@ def test_file_permissions(history, history_file):
     # Owner should have read/write
     assert mode & stat.S_IRUSR
     assert mode & stat.S_IWUSR
+    # Group and other must have NO access — a 0644 file would leak the raw
+    # command history to a local co-tenant (A4). This is the part the previous
+    # test missed: it only checked owner bits were present, not that the rest
+    # were absent, so a 0644 file passed.
+    assert not (mode & stat.S_IRGRP)
+    assert not (mode & stat.S_IWGRP)
+    assert not (mode & stat.S_IROTH)
+    assert not (mode & stat.S_IWOTH)
+
+
+def test_file_permissions_reharden_loose_file(history, history_file):
+    """A pre-existing group/other-readable history file is re-hardened on append."""
+    import stat
+
+    # Simulate a history file left world-readable (e.g. created before hardening,
+    # or by a copy/restore).
+    history_file.write_text('{"cmd": "old"}\n', encoding="utf-8")
+    history_file.chmod(0o644)
+    assert history_file.stat().st_mode & stat.S_IROTH  # loose to begin with
+
+    history.append(_make_entry())
+
+    mode = history_file.stat().st_mode
+    assert not (mode & (stat.S_IRGRP | stat.S_IROTH | stat.S_IWGRP | stat.S_IWOTH))
