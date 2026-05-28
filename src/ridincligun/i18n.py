@@ -60,6 +60,7 @@ def _resolve_data_path() -> Path:
 
 # ── TOML flattening ────────────────────────────────────────────
 
+
 def _flatten_toml(data: dict, prefix: str = "") -> dict[str, str]:
     """Recursively flatten nested TOML into dotted keys.
 
@@ -76,6 +77,7 @@ def _flatten_toml(data: dict, prefix: str = "") -> dict[str, str]:
 
 
 # ── Locale loading ──────────────────────────────────────────────
+
 
 def _load_locale(locale: str) -> dict[str, str]:
     """Load and merge all TOML string files for a locale."""
@@ -97,6 +99,7 @@ def _load_locale(locale: str) -> dict[str, str]:
 
 
 # ── Public API ──────────────────────────────────────────────────
+
 
 def set_locale(locale: str) -> None:
     """Set the active locale and load its strings.
@@ -151,10 +154,7 @@ def available_locales() -> list[str]:
     base = _resolve_data_path()
     if not base.is_dir():
         return ["en"]
-    locales = sorted(
-        d.name for d in base.iterdir()
-        if d.is_dir() and (d / "ui.toml").exists()
-    )
+    locales = sorted(d.name for d in base.iterdir() if d.is_dir() and (d / "ui.toml").exists())
     return locales if locales else ["en"]
 
 

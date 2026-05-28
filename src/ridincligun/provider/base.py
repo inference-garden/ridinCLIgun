@@ -18,11 +18,11 @@ from dataclasses import dataclass
 class AIReviewResponse:
     """The structured result from an AI review."""
 
-    risk_assessment: str   # e.g. "danger", "warning", "caution", "safe"
-    summary: str           # What the command does
-    explanation: str       # Why it's risky (or safe)
-    suggestion: str        # What to do instead (empty if safe)
-    raw_text: str          # Full unstructured response for fallback display
+    risk_assessment: str  # e.g. "danger", "warning", "caution", "safe"
+    summary: str  # What the command does
+    explanation: str  # Why it's risky (or safe)
+    suggestion: str  # What to do instead (empty if safe)
+    raw_text: str  # Full unstructured response for fallback display
     input_tokens: int = 0  # Tokens used in the request
     output_tokens: int = 0  # Tokens used in the response
 

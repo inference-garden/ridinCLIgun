@@ -27,7 +27,7 @@ connected = "✓ Verbunden mit {provider}"
 title = "ridinCLIgun"
 tagline = "Ihr Shell-Begleiter."
 motto = "Berät, handelt nie."
-help_hint = "Ctrl+G → H  Hilfe anzeigen"
+help_hint = "F1  Hilfe anzeigen"
 
 # ── Onboarding (first run) ──────────────────────────────────────
 
@@ -36,10 +36,10 @@ title = "Willkommen bei ridinCLIgun"
 tagline = "Ihr Shell-Begleiter."
 motto = "Berät, handelt nie."
 shortcuts_title = "Tastenkürzel:"
-shortcut_review = "Ctrl+G, R   KI-Prüfung"
-shortcut_help = "Ctrl+G, ?   Befehlshilfe"
+shortcut_review = "F2          KI-Prüfung"
+shortcut_help = "F1          Hilfe anzeigen"
 shortcut_settings = "Ctrl+G, G   Einstellungen"
-shortcut_all = "Ctrl+G, H   Alle Tastenkürzel"
+shortcut_all = "Ctrl+G, H   Prüfverlauf"
 setup_title = "KI einrichten:"
 setup_hint = "Ctrl+G, G → Anbieter"
 setup_detail = "um Ihren API key hinzuzufügen."
@@ -56,7 +56,6 @@ leader_title = "Ctrl+G Leader-Taste:"
 review = "KI-Prüfung des Befehls"
 insert = "KI-Vorschlag einfügen"
 history = "Prüfverlauf öffnen"
-cmd_help = "Befehlshilfe --help"
 toggle_ai = "KI ein-/ausschalten"
 model_select = "Modellauswahl"
 settings = "Einstellungen"
@@ -64,7 +63,6 @@ toggle_secret = "Geheimmodus umschalten"
 this_help = "Diese Hilfe"
 restart_shell = "Shell neu starten"
 debug = "Debug-Informationen"
-quit_fallback = "Beenden (Ausweich)"
 dismiss = "Escape zum Schließen."
 
 # ── Secrets warning ─────────────────────────────────────────────
@@ -77,7 +75,7 @@ warning_line2 = "Entfernen Sie Geheimnisse, bevor Sie eine"
 warning_line3 = "KI-Prüfung anfordern."
 detected_in_command = "🔒 Geheimnisse im Befehl erkannt."
 send_anyway = "Senden an KI kann Zugangsdaten offenlegen."
-confirm_send = "Drücken Sie erneut Ctrl+G, R zum Senden."
+confirm_send = "F2 erneut drücken zum Senden."
 detected_in_clipboard = "🔒 Geheimnisse in Zwischenablage erkannt"
 clipboard_found = "Gefunden: {kinds}"
 clipboard_confirm = "V drücken zum Einfügen,"
@@ -87,7 +85,7 @@ clipboard_cancel = "andere Taste zum Abbrechen."
 
 [redaction]
 title = "🔍 Schwärzungsvorschau"
-confirm = "Ctrl+G, R zum Bestätigen und Senden."
+confirm = "F2 zum Bestätigen und Senden."
 cancel = "Andere Taste zum Abbrechen."
 original = "Original:"
 sent_to_ai = "An KI gesendet:"
@@ -100,7 +98,7 @@ config_hint = "In [privacy]-Konfiguration abschaltbar."
 title = "KI-Prüfung"
 loading = "🔍 Prüfe: {command}"
 asking = "Anfrage an {provider}..."
-insert_hint = "Ctrl+G, I zum Einfügen des Vorschlags."
+insert_hint = "F3 zum Einfügen des Vorschlags."
 
 # ── Connection error ────────────────────────────────────────────
 
@@ -118,27 +116,13 @@ local_active = "Lokale Hinweise weiterhin aktiv."
 # ── Notices (advisory pane) ─────────────────────────────────────
 
 [notice]
-ai_off = "KI ist aus. Umschalten mit Ctrl+G, A."
-secret_mode_on = "Geheimmodus ist ein — Befehl nicht gesendet.\nUmschalten mit Ctrl+G, S."
+ai_off = "KI ist aus. Umschalten mit F4."
+secret_mode_on = "Geheimmodus ist ein — Befehl nicht gesendet.\nUmschalten mit F5."
 no_api_key = "Kein API key konfiguriert.\nFügen Sie ANTHROPIC_API_KEY hinzu:\n~/.config/ridincligun/.env"
 no_command = "Kein Befehl zum Prüfen."
-no_suggestion = "Kein KI-Vorschlag vorhanden.\nFordern Sie zuerst eine Prüfung an (Ctrl+G, R)."
+no_suggestion = "Kein KI-Vorschlag vorhanden.\nFordern Sie zuerst eine Prüfung an (F2)."
 extract_failed = "Konnte keinen Befehl aus dem\nKI-Vorschlag extrahieren."
 inserted = "Eingefügt: {suggestion}\n\nVor dem Ausführen prüfen."
-
-# ── Command help ────────────────────────────────────────────────
-
-[cmd_help]
-no_command = "Kein Befehl zum Nachschlagen.\nGeben Sie zuerst einen Befehl ein."
-looking_up = "Hilfe wird nachgeschlagen für: {cmd}"
-trying = "Versuche --help, -h, man..."
-not_found = "Keine Hilfe gefunden für: {cmd}\n\n--help, -h und man-Seite versucht."
-invalid_name = "Ungültiger Befehlsname: {cmd}\n\nHilfe kann nicht nachgeschlagen werden."
-cmd_not_found = "Befehl nicht gefunden: {cmd}\n\nStellen Sie sicher, dass er installiert und im PATH ist."
-timeout = "Hilfe-Nachschlagen abgelaufen (5s).\n\nDer Befehl ist möglicherweise interaktiv."
-help_failed = "Hilfe-Nachschlagen fehlgeschlagen: {error}"
-truncated = "... (gekürzt)"
-dismiss = "Escape zum Schließen."
 
 # ── Model selector ──────────────────────────────────────────────
 
@@ -186,7 +170,7 @@ off = "aus"
 offline = "offline"
 error = "Fehler"
 leader_waiting = "⌨ Ctrl+G..."
-help_hint = "Ctrl+G → Hilfe"
+help_hint = "F1 Hilfe"
 
 # ── Settings screen ─────────────────────────────────────────────
 

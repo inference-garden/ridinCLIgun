@@ -60,9 +60,7 @@ class ReviewHistory:
     """
 
     def __init__(self, history_file: Path | None = None) -> None:
-        self._file = history_file or (
-            Path.home() / ".config" / "ridincligun" / "history.jsonl"
-        )
+        self._file = history_file or (Path.home() / ".config" / "ridincligun" / "history.jsonl")
 
     @property
     def file_path(self) -> Path:
@@ -120,18 +118,20 @@ class ReviewHistory:
                 try:
                     data = json.loads(line)
                     has_full_detail = "explanation" in data
-                    entries.append(HistoryEntry(
-                        timestamp=data.get("ts", ""),
-                        command=data.get("cmd", ""),
-                        source=data.get("src", ""),
-                        risk=data.get("risk", ""),
-                        summary=data.get("summary", ""),
-                        explanation=data.get("explanation", ""),
-                        suggestion=data.get("suggestion", ""),
-                        provider=data.get("provider", ""),
-                        tokens=data.get("tokens", 0),
-                        has_full_detail=has_full_detail,
-                    ))
+                    entries.append(
+                        HistoryEntry(
+                            timestamp=data.get("ts", ""),
+                            command=data.get("cmd", ""),
+                            source=data.get("src", ""),
+                            risk=data.get("risk", ""),
+                            summary=data.get("summary", ""),
+                            explanation=data.get("explanation", ""),
+                            suggestion=data.get("suggestion", ""),
+                            provider=data.get("provider", ""),
+                            tokens=data.get("tokens", 0),
+                            has_full_detail=has_full_detail,
+                        )
+                    )
                 except (json.JSONDecodeError, KeyError):
                     continue  # Skip malformed entries
 

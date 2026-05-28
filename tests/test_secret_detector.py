@@ -10,6 +10,7 @@ from ridincligun.advisory.secret_detector import detect_secrets
 
 # ── API key detection ──────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "command,expected_kind",
     [
@@ -25,8 +26,7 @@ from ridincligun.advisory.secret_detector import detect_secrets
         ("SLACK_TOKEN=xoxb-123456789-abcdefghij-zyxwvutsrq", "api_key"),
         ("aws configure set aws_access_key_id AKIAIOSFODNN7EXAMPLE", "api_key"),
         (
-            "gcloud auth activate-service-account"
-            " --key AIzaSyA1234567890abcdefghijklmnopqrstuvwx",
+            "gcloud auth activate-service-account --key AIzaSyA1234567890abcdefghijklmnopqrstuvwx",
             "api_key",
         ),
         ("GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx", "api_key"),
@@ -42,6 +42,7 @@ def test_detects_api_keys(command: str, expected_kind: str) -> None:
 
 
 # ── Password flags ─────────────────────────────────────────────────
+
 
 @pytest.mark.parametrize(
     "command",
@@ -61,6 +62,7 @@ def test_detects_password_flags(command: str) -> None:
 
 # ── Credential URLs ────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "command",
     [
@@ -77,6 +79,7 @@ def test_detects_credential_urls(command: str) -> None:
 
 
 # ── Env secret assignments ─────────────────────────────────────────
+
 
 @pytest.mark.parametrize(
     "command",
@@ -97,6 +100,7 @@ def test_detects_env_secrets(command: str) -> None:
 
 # ── Private key content ────────────────────────────────────────────
 
+
 def test_detects_private_key() -> None:
     command = "echo '-----BEGIN RSA PRIVATE KEY-----' > /tmp/key.pem"
     result = detect_secrets(command)
@@ -107,6 +111,7 @@ def test_detects_private_key() -> None:
 
 # ── Authorization headers ──────────────────────────────────────────
 
+
 def test_detects_auth_header() -> None:
     command = "curl -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0' https://api.example.com"
     result = detect_secrets(command)
@@ -116,6 +121,7 @@ def test_detects_auth_header() -> None:
 
 
 # ── Safe commands (no false positives) ─────────────────────────────
+
 
 @pytest.mark.parametrize(
     "command",
@@ -141,6 +147,7 @@ def test_safe_commands_no_false_positives(command: str) -> None:
 
 # ── Empty / blank input ────────────────────────────────────────────
 
+
 @pytest.mark.parametrize("command", ["", "   ", None])
 def test_empty_input(command: str | None) -> None:
     result = detect_secrets(command or "")
@@ -148,6 +155,7 @@ def test_empty_input(command: str | None) -> None:
 
 
 # ── Deduplication ──────────────────────────────────────────────────
+
 
 def test_deduplicates_by_kind() -> None:
     """Multiple API keys in one command should produce one api_key match."""

@@ -19,8 +19,8 @@ import re
 from ridincligun.provider.base import AIReviewResponse, ProviderAdapter, ProviderError
 from ridincligun.provider.prompt import SYSTEM_PROMPT, build_review_prompt
 
-# Default model — small, fast, good enough for command review
-_DEFAULT_MODEL = "mistral-small-latest"
+# Default: Mistral Small 4, pinned snapshot (2026-03). Rolling alias: mistral-small-latest.
+_DEFAULT_MODEL = "mistral-small-2603"
 _MAX_TOKENS = 512
 
 

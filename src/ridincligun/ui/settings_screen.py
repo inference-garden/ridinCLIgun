@@ -51,13 +51,18 @@ def _read_env_keys(env_file: Path) -> dict[str, str]:
         return keys
     try:
         from dotenv import dotenv_values
+
         vals = dotenv_values(env_file)
         for _, env_var in _PROVIDER_KEYS:
             v = vals.get(env_var, "") or ""
             if v:
                 keys[env_var] = v
-    except Exception:  # nosec B110
-        pass
+    except Exception:  # nosec B110 — intentional fail-closed (see below)
+        # Fail closed on ANY read/parse error: return no keys rather than
+        # propagate. Missing keys disable AI (safe direction); they are never
+        # leaked. Broad except is deliberate so a malformed .env cannot crash
+        # the settings screen or surface partial/raw key state. (audit T07)
+        return {}
     return keys
 
 
@@ -256,14 +261,16 @@ class SettingsScreen(ModalScreen[str | None]):
                 else:
                     status = t("settings.key_not_configured")
 
-            items.append({
-                "section": t("settings.section_keys"),
-                "key": env_var,
-                "label": f"{provider_name}: {status}",
-                "value": env_var,
-                "type": "provider",
-                "provider_name": provider_name,
-            })
+            items.append(
+                {
+                    "section": t("settings.section_keys"),
+                    "key": env_var,
+                    "label": f"{provider_name}: {status}",
+                    "value": env_var,
+                    "type": "provider",
+                    "provider_name": provider_name,
+                }
+            )
 
         return items
 
@@ -375,9 +382,7 @@ class SettingsScreen(ModalScreen[str | None]):
 
         elif item["key"] == "review_mode":
             current_idx = (
-                _REVIEW_MODE_KEYS.index(item["value"])
-                if item["value"] in _REVIEW_MODE_KEYS
-                else 0
+                _REVIEW_MODE_KEYS.index(item["value"]) if item["value"] in _REVIEW_MODE_KEYS else 0
             )
             next_idx = (current_idx + 1) % len(_REVIEW_MODE_KEYS)
             new_mode = _REVIEW_MODE_KEYS[next_idx]
@@ -468,7 +473,9 @@ class SettingsScreen(ModalScreen[str | None]):
                 )
             elif "[general]" in text:
                 text = text.replace(
-                    "[general]", f"[general]\n{key} = {toml_value}", 1,
+                    "[general]",
+                    f"[general]\n{key} = {toml_value}",
+                    1,
                 )
             else:
                 text += f"\n[general]\n{key} = {toml_value}\n"

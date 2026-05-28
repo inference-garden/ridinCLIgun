@@ -16,7 +16,8 @@ import re
 from ridincligun.provider.base import AIReviewResponse, ProviderAdapter, ProviderError
 from ridincligun.provider.prompt import SYSTEM_PROMPT, build_review_prompt
 
-_DEFAULT_MODEL = "gpt-4o-mini"
+# Default: fast, cost-efficient (current as of 2026-05). gpt-4o-mini superseded.
+_DEFAULT_MODEL = "gpt-4.1-mini"
 _MAX_TOKENS = 512
 
 

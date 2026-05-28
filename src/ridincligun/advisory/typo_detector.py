@@ -20,6 +20,7 @@ from __future__ import annotations
 
 # ── Levenshtein distance ──────────────────────────────────────────
 
+
 def _levenshtein(a: str, b: str) -> int:
     """Compute the Levenshtein edit distance between two strings."""
     if a == b:
@@ -45,6 +46,7 @@ def _levenshtein(a: str, b: str) -> int:
 
 
 # ── Typo detector ─────────────────────────────────────────────────
+
 
 class TypoDetector:
     """Suggests the closest known command when the typed name is unknown.

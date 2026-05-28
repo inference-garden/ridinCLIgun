@@ -45,10 +45,10 @@ _FRAME_BG = "#101829"
 # on their cell width, causing row-by-row misalignment in the list.
 
 _RISK_ICONS: dict[str, tuple[str, Style]] = {
-    "danger":  ("✖", Style(color="#ff5555", bold=True)),
+    "danger": ("✖", Style(color="#ff5555", bold=True)),
     "warning": ("▲", Style(color="#f1fa8c", bold=True)),
     "caution": ("◆", Style(color="#8be9fd")),
-    "safe":    ("✓", Style(color="#50fa7b", bold=True)),
+    "safe": ("✓", Style(color="#50fa7b", bold=True)),
 }
 _DEFAULT_ICON: tuple[str, Style] = ("●", Style(color="#7f8da6"))
 
@@ -699,8 +699,7 @@ class HistoryBrowserScreen(ModalScreen[None]):
         shown = len(self._filtered_entries)
         total = len(self._all_entries)
         footer_widget.update(
-            f"{t('history.result_count', shown=shown, total=total)}\n"
-            f"{t('history.hint')}"
+            f"{t('history.result_count', shown=shown, total=total)}\n{t('history.hint')}"
         )
 
     def _selected_entry(self) -> HistoryEntry | None:

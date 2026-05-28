@@ -4,60 +4,41 @@
 
 """Shortcut bindings for ridinCLIgun.
 
-Implements the Ctrl+G leader key state machine and all app-level key routing.
-The leader pattern: press Ctrl+G, then a follow-up key within a timeout.
+Implements the Ctrl+G leader key state machine for actions that don't have
+a dedicated function key. Frequent actions (Help, Review, Insert, Toggle AI,
+Toggle Secret) are bound to F1–F5 directly in app.py BINDINGS.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
 
 
 class LeaderAction(Enum):
-    """Actions available through the Ctrl+G leader key."""
+    """Actions available through the Ctrl+G leader key.
 
-    REVIEW = auto()       # R — review current command
-    HELP = auto()         # H — show help overlay
+    Frequent actions (Review/Insert/Help/AI/Secret) live on F1–F5.
+    The leader is reserved for less frequent, modal, or destructive actions.
+    """
+
     RESTART_SHELL = auto()  # X — restart shell
-    DEBUG = auto()        # D — show provider debug
-    TOGGLE_AI = auto()    # A — toggle AI on/off
-    TOGGLE_SECRET = auto()  # S — toggle Secret Mode
-    COPY = auto()         # C — copy (fallback if Cmd+C unavailable)
-    PASTE = auto()        # V — paste (fallback if Cmd+V unavailable)
-    QUIT = auto()         # Q — quit (fallback if Cmd+Q unavailable)
-    INSERT_SUGGESTION = auto()  # I — insert AI suggestion into shell
-    CMD_HELP = auto()     # ? — show --help for current command
+    DEBUG = auto()  # D — show provider debug
+    QUIT = auto()  # Q — quit ridinCLIgun
     MODEL_SELECT = auto()  # M — model/provider selection
-    HISTORY = auto()      # K — open review history browser
-    SETTINGS = auto()     # G — open settings menu
+    HISTORY = auto()  # H — open review history (was K in v0.4)
+    SETTINGS = auto()  # G — open settings menu
 
 
 # Map follow-up keys to actions
 LEADER_MAP: dict[str, LeaderAction] = {
-    "r": LeaderAction.REVIEW,
-    "h": LeaderAction.HELP,
     "x": LeaderAction.RESTART_SHELL,
     "d": LeaderAction.DEBUG,
-    "a": LeaderAction.TOGGLE_AI,
-    "s": LeaderAction.TOGGLE_SECRET,
-    "c": LeaderAction.COPY,
-    "v": LeaderAction.PASTE,
     "q": LeaderAction.QUIT,
-    "i": LeaderAction.INSERT_SUGGESTION,
-    "?": LeaderAction.CMD_HELP,
-    "question_mark": LeaderAction.CMD_HELP,
     "m": LeaderAction.MODEL_SELECT,
-    "k": LeaderAction.HISTORY,
+    "h": LeaderAction.HISTORY,
     "g": LeaderAction.SETTINGS,
 }
-
-# Timeout in seconds for the follow-up key after Ctrl+G
-LEADER_TIMEOUT: float = 2.0
 
 
 @dataclass

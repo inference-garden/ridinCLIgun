@@ -249,9 +249,9 @@ def test_openai_adapter_name():
 
 
 def test_openai_adapter_default_model():
-    """OpenAI adapter uses gpt-4o-mini by default."""
+    """OpenAI adapter uses gpt-4.1-mini by default."""
     adapter = OpenAIAdapter(api_key="sk-test")
-    assert "gpt-4o-mini" in adapter.name
+    assert "gpt-4.1-mini" in adapter.name
 
 
 def test_openai_parse_response_full():

@@ -26,6 +26,7 @@ def _test_config(tmp_path) -> Config:
         ai_enabled_default=False,
         api_key="",
         provider=ProviderSettings(),
+        language="en",  # pin locale so tests don't depend on $LANG
     )
 
 
@@ -56,7 +57,7 @@ async def test_history_browser_selection_updates_detail(tmp_path):
 
     async with app.run_test(size=(140, 45)) as pilot:
         await pilot.press("ctrl+g")
-        await pilot.press("k")
+        await pilot.press("h")
         await pilot.pause()
 
         screen = app.screen_stack[-1]
@@ -88,7 +89,7 @@ async def test_history_browser_shows_legacy_partial_note(tmp_path):
 
     async with app.run_test(size=(140, 45)) as pilot:
         await pilot.press("ctrl+g")
-        await pilot.press("k")
+        await pilot.press("h")
         await pilot.pause()
 
         screen = app.screen_stack[-1]
@@ -105,7 +106,7 @@ async def test_history_browser_empty_state(tmp_path):
 
     async with app.run_test(size=(140, 45)) as pilot:
         await pilot.press("ctrl+g")
-        await pilot.press("k")
+        await pilot.press("h")
         await pilot.pause()
 
         screen = app.screen_stack[-1]
@@ -135,7 +136,7 @@ async def test_history_browser_copies_suggestion(monkeypatch, tmp_path):
 
     async with app.run_test(size=(140, 45)) as pilot:
         await pilot.press("ctrl+g")
-        await pilot.press("k")
+        await pilot.press("h")
         await pilot.pause()
 
         await pilot.press("c")

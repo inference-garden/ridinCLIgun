@@ -27,7 +27,7 @@ connected = "✓ Connected to {provider}"
 title = "ridinCLIgun"
 tagline = "Your shell companion."
 motto = "Advises, never acts."
-help_hint = "Ctrl+G → H  show help"
+help_hint = "F1  show help"
 
 # ── Onboarding (first run) ──────────────────────────────────────
 
@@ -36,10 +36,10 @@ title = "Welcome to ridinCLIgun"
 tagline = "Your shell companion."
 motto = "Advises, never acts."
 shortcuts_title = "Key shortcuts:"
-shortcut_review = "Ctrl+G, R   AI review"
-shortcut_help = "Ctrl+G, ?   command help"
+shortcut_review = "F2          AI review"
+shortcut_help = "F1          show help"
 shortcut_settings = "Ctrl+G, G   settings"
-shortcut_all = "Ctrl+G, H   all shortcuts"
+shortcut_all = "Ctrl+G, H   review history"
 setup_title = "Set up AI:"
 setup_hint = "Ctrl+G, G → Providers"
 setup_detail = "to add your API key."
@@ -56,7 +56,6 @@ leader_title = "Ctrl+G leader key:"
 review = "AI review command"
 insert = "insert AI suggestion"
 history = "open review history"
-cmd_help = "show cmd --help"
 toggle_ai = "toggle AI on/off"
 model_select = "model selection"
 settings = "settings"
@@ -64,7 +63,6 @@ toggle_secret = "toggle Secret mode"
 this_help = "this help"
 restart_shell = "restart shell"
 debug = "debug info"
-quit_fallback = "quit (fallback)"
 dismiss = "Escape to dismiss."
 
 # ── Secrets warning ─────────────────────────────────────────────
@@ -77,7 +75,7 @@ warning_line2 = "Remove secrets before requesting"
 warning_line3 = "AI review."
 detected_in_command = "🔒 Secrets detected in command."
 send_anyway = "Sending to AI may expose credentials."
-confirm_send = "Press Ctrl+G, R again to send anyway."
+confirm_send = "Press F2 again to send anyway."
 detected_in_clipboard = "🔒 Secrets detected in clipboard"
 clipboard_found = "Found: {kinds}"
 clipboard_confirm = "Press V to paste anyway,"
@@ -87,7 +85,7 @@ clipboard_cancel = "any other key to cancel."
 
 [redaction]
 title = "🔍 Redaction Preview"
-confirm = "Ctrl+G, R to confirm and send."
+confirm = "F2 to confirm and send."
 cancel = "Any other key to cancel."
 original = "Original:"
 sent_to_ai = "Sent to AI:"
@@ -100,7 +98,7 @@ config_hint = "Switch off in [privacy] config."
 title = "AI Review"
 loading = "🔍 Reviewing: {command}"
 asking = "Asking {provider}..."
-insert_hint = "Ctrl+G, I to insert suggestion."
+insert_hint = "F3 to insert suggestion."
 
 # ── Connection error ────────────────────────────────────────────
 
@@ -118,27 +116,13 @@ local_active = "Local advisories still active."
 # ── Notices (advisory pane) ─────────────────────────────────────
 
 [notice]
-ai_off = "AI is off. Toggle with Ctrl+G, A."
-secret_mode_on = "Secret mode is on — command not sent.\nToggle with Ctrl+G, S."
+ai_off = "AI is off. Toggle with F4."
+secret_mode_on = "Secret mode is on — command not sent.\nToggle with F5."
 no_api_key = "No API key configured.\nAdd ANTHROPIC_API_KEY to:\n~/.config/ridincligun/.env"
 no_command = "No command to review."
-no_suggestion = "No AI suggestion available.\nRequest a review first (Ctrl+G, R)."
+no_suggestion = "No AI suggestion available.\nRequest a review first (F2)."
 extract_failed = "Could not extract a command from\nthe AI suggestion."
 inserted = "Inserted: {suggestion}\n\nReview before pressing Enter."
-
-# ── Command help ────────────────────────────────────────────────
-
-[cmd_help]
-no_command = "No command to look up.\nType a command first."
-looking_up = "Looking up help for: {cmd}"
-trying = "Trying --help, -h, man..."
-not_found = "No help found for: {cmd}\n\nTried --help, -h, and man page."
-invalid_name = "Invalid command name: {cmd}\n\nCannot look up help."
-cmd_not_found = "Command not found: {cmd}\n\nMake sure it's installed and in PATH."
-timeout = "Help lookup timed out (5s).\n\nThe command may be interactive."
-help_failed = "Help lookup failed: {error}"
-truncated = "... (truncated)"
-dismiss = "Escape to dismiss."
 
 # ── Model selector ──────────────────────────────────────────────
 
@@ -186,7 +170,7 @@ off = "off"
 offline = "offline"
 error = "error"
 leader_waiting = "⌨ Ctrl+G..."
-help_hint = "Ctrl+G → help"
+help_hint = "F1 help"
 
 # ── Settings screen ─────────────────────────────────────────────
 

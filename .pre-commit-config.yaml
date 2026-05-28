@@ -2,8 +2,9 @@
 # Install: pip install pre-commit && pre-commit install
 repos:
   # Ruff — linting + formatting
+  # Keep `rev` >= ruff version in pyproject.toml [project.optional-dependencies].dev
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.2
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: [--fix]
@@ -26,3 +27,21 @@ repos:
       - id: check-toml
       - id: check-added-large-files
         args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Identity-leak guards — structural only, no personal data in this file.
+  # Blocklist for specific identifiers lives PM-side (30_Security/persona_register.md).
+  - repo: local
+    hooks:
+      - id: block-user-home-paths
+        name: block absolute /Users/ home paths (except /Users/Shared/)
+        language: pygrep
+        entry: '/Users/(?!Shared/)[A-Za-z0-9._-]+/'
+        types: [text]
+      - id: block-local-mdns-hostnames
+        name: block *.local hostnames (default-git-identity leak)
+        language: pygrep
+        entry: '@[A-Za-z0-9.-]+\.local\b'
+        types: [text]

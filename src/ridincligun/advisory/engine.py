@@ -62,10 +62,7 @@ class AdvisoryEngine:
         Merges tldr known commands + catalog families + PATH binaries.
         """
         base = self._tldr.known_commands()
-        catalog_names = frozenset(
-            p.family_id.split("_")[0]
-            for p in self._catalog.patterns
-        )
+        catalog_names = frozenset(p.family_id.split("_")[0] for p in self._catalog.patterns)
         self._typo = TypoDetector(base | catalog_names | extra)
 
     def analyze(self, command: str, locale: str = "en") -> ReviewResult:

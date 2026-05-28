@@ -81,6 +81,7 @@ def _get_templates() -> dict:
 
 # ── Category resolution ──────────────────────────────────────────
 
+
 def resolve_category(family_ids: list[str]) -> str:
     """Map matched command family IDs to a prompt category name.
 
@@ -197,13 +198,15 @@ _SANITIZE_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"~?/\.\w*hist\w*\b"), "[SENSITIVE_FILE]"),
     (re.compile(r"~?/\.netrc\b"), "[SENSITIVE_FILE]"),
     (re.compile(r"~?/\.pgpass\b"), "[SENSITIVE_FILE]"),
-
     # ── Inline secrets in commands ─────────────────────────────────
     # export SECRET_KEY=value, export API_KEY=value etc.
-    (re.compile(
-        r"(export\s+\w*(SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH)\w*=)\S+",
-        re.IGNORECASE,
-    ), r"\1[REDACTED]"),
+    (
+        re.compile(
+            r"(export\s+\w*(SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH)\w*=)\S+",
+            re.IGNORECASE,
+        ),
+        r"\1[REDACTED]",
+    ),
 ]
 
 

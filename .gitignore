@@ -19,6 +19,11 @@ env/
 *.swo
 *~
 
+# AI coding assistants (may contain user paths)
+.claude/
+.cursor/
+.aider*
+
 # OS
 .DS_Store
 Thumbs.db

@@ -84,6 +84,7 @@ class ShellPane(Widget, can_focus=True):
 
     class AnyKeyPressed(Message):
         """Posted on every key press that the shell handles. Used for help dismissal."""
+
         pass
 
     _HISTORY_SIZE = 1000  # max scrollback lines
@@ -242,8 +243,7 @@ class ShellPane(Widget, can_focus=True):
             col_end = min(col_end, self._screen.columns - 1)
 
             line = "".join(
-                row[x].data if row[x].data else " "
-                for x in range(col_start, col_end + 1)
+                row[x].data if row[x].data else " " for x in range(col_start, col_end + 1)
             ).rstrip()
             lines.append(line)
 
@@ -287,10 +287,10 @@ class ShellPane(Widget, can_focus=True):
 
     # Keys reserved for the app (must NOT be sent to PTY)
     _APP_KEYS: set[str] = {
-        "ctrl+q",      # quit
-        "ctrl+g",      # leader key
-        "f6",          # divider left
-        "f7",          # divider right
+        "ctrl+q",  # quit
+        "ctrl+g",  # leader key
+        "f6",  # divider left
+        "f7",  # divider right
     }
 
     def on_key(self, event: events.Key) -> None:
@@ -418,11 +418,7 @@ class ShellPane(Widget, can_focus=True):
         cols = min(self._screen.columns, width)
         has_sel = self.has_selection() and self._scroll_offset == 0
         # Show cursor only in live view, on the cursor line
-        show_cursor = (
-            self._scroll_offset == 0
-            and y == self._screen.cursor.y
-            and self.has_focus
-        )
+        show_cursor = self._scroll_offset == 0 and y == self._screen.cursor.y and self.has_focus
 
         # Batch consecutive characters with the same style + selection state
         current_text = ""

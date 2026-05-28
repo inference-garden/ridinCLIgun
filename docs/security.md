@@ -1,151 +1,64 @@
 # Security Model
 
-How ridinCLIgun handles your data, your commands, and your secrets.
+This document covers data flow, trust boundaries, local storage, controls, and known limits. Trigger rules live in `command_analysis.md`; prompt composition lives in `prompt_category_system.md`.
 
 ## Principles
 
-- **Advises, never acts** — ridinCLIgun never modifies, executes, or blocks your commands
-- **Local-first** — works fully offline with no AI provider configured
-- **AI is opt-in** — you toggle it on, you trigger reviews, you confirm what gets sent
+- ridinCLIgun advises; it does not execute, rewrite, or block shell commands.
+- The offline advisory features work without any AI provider configured.
+- AI traffic is user-controlled, but not limited to `F2` alone: provider validation can also make a minimal test request.
 
-## What is sent to the AI
+## When network traffic can happen
 
-When you request an AI review (`Ctrl+G, R`):
+| Flow | Trigger | What leaves the machine | What does not |
+|------|---------|-------------------------|---------------|
+| Provider validation | AI is toggled on with `F4`, or a provider/model switch completes while a valid key is already available | a minimal review request for `echo test` | current shell command, shell history, file contents, environment variables |
+| Layer 2 AI review | AI is enabled, a provider is configured, and the user presses `F2` | composed Layer 2 system prompt, current command after privacy redaction, locale instruction when active language is not English | file contents, shell history, shell output / scrollback, review history, environment variables |
+| Layer 3 deep analysis | after Layer 2, when the reviewed command matches a remote-execute pattern such as `curl ... | bash` | fetched download URL, fetched script content, possible truncation warning, locale instruction when active language is not English | fetched content is never executed by ridinCLIgun |
 
-- **Preserved:** command structure (so the AI can give accurate analysis)
-- **Redacted:** secrets, API keys, sensitive file paths
-- **Never sent:** file contents, environment variables, shell history
+Layer 3 trust boundary sequence:
 
-## Security layers
+1. ridinCLIgun fetches the remote URL from the local machine
+2. the fetched script content is then sent to the AI provider for analysis
 
-| Layer | What it does |
-|-------|-------------|
-| Real-time secret detection | Scans every keystroke; blocks AI automatically when secrets are found |
-| Privacy-only sanitization | Redacts secrets and sensitive paths before sending to AI |
-| Secret mode (`Ctrl+G, S`) | Manual kill-switch — blocks all AI communication |
-| In-flight guard | Discards AI responses if secret mode is toggled during a request |
-| Environment isolation | API keys are stripped from the embedded shell environment |
+## Local storage
 
-## Known limits
+| Path | Purpose | Notes |
+|------|---------|-------|
+| `~/.config/ridincligun/config.toml` | app settings | created on first run |
+| `~/.config/ridincligun/.env` | API keys | owner-only permissions (`0600`) |
+| `~/.config/ridincligun/history.jsonl` | AI review and deep-analysis history | owner-only permissions (`0600`) |
+| bundled `data/` files | command catalog, prompt templates, locales | shipped with the app |
 
-- Pattern matching is best-effort, not a guarantee
-- Does not deeply parse shell syntax (no AST)
-- Cannot catch novel or obfuscated credential formats
-- See [Command Analysis](command_analysis.md) for detailed analysis gaps
+`history.jsonl` currently stores:
 
-## Local data — stays on your machine
+- timestamp
+- raw command text
+- source (`ai` or `deep_analysis`)
+- risk
+- summary
+- explanation
+- suggestion
+- provider name
+- token counts
 
-The following never leaves your machine:
+That history stays local, but it is privacy-relevant because reviewed commands are stored verbatim.
 
-- **Command catalog** (tldr-pages, bundled JSON) — used for offline command knowledge
-- **Review history** (JSONL, `~/.config/ridincligun/`) — local-only, 0600 permissions
-- **API keys** (`.env`, `~/.config/ridincligun/`) — read into memory at startup, never injected into shell environment, never logged
+## Current controls
 
-## What the AI sees — full prompt transparency
+- **Secret detection while typing**: if the current command looks secret-bearing, review is interrupted and the user must confirm explicitly before anything is sent.
+- **Redaction preview**: when sanitization changes the command and preview is enabled, the app shows original vs. redacted text first. A second `F2` confirms the send.
+- **Secret Mode (`F5`)**: suppresses AI reviews and discards stale in-flight results.
+- **Environment isolation**: API keys are loaded into app memory and passed explicitly to provider adapters; they are not injected into the embedded shell environment.
+- **Permission hardening**: `.env` and `history.jsonl` are kept owner-readable/writable only.
 
-ridinCLIgun sends exactly two things to the AI provider: a **system prompt** and
-a **user message**. Nothing else — no history, no context, no environment data.
+## Known limits and current gaps
 
-### System prompt (sent with every review)
+- Secret detection and sanitization are best-effort regex-based checks, not a shell parser.
+- Only matched secret patterns and a small set of sensitive file paths are redacted. Arbitrary filenames, hostnames, URLs, and user data are preserved.
+- The AI sees command structure intentionally; dangerous targets such as `/dev/...`, `rm -rf`, or pipe chains are not masked.
+- Deep analysis only covers specific download-and-execute patterns. It does not model multi-step attack chains across separate commands.
+- Current gap `B-S09`: Layer 3 still accepts `http://`, has no SSRF/redirect guard, and checks Secret Mode only after the remote fetch returns.
+- Scripts behind authentication, stdin-fed content, heredocs, and shell sourcing flows are outside current deep-analysis coverage.
 
-The base system prompt is always included. It is extended at runtime with:
-- a **category supplement** (domain-specific hints based on matched command families — e.g. file operations, network, version control)
-- a **mode supplement** (tone adjustment — `default` or `explorer` for beginners/kids)
-- a **language instruction** (when a non-English locale is configured)
-
-**Base system prompt:**
-
-```
-You are a technical shell command reviewer in a developer tool called ridinCLIgun.
-
-Your job: classify shell commands by risk and explain them factually.
-
-Rules:
-- You only describe and classify. You never execute anything.
-- Classify risk as: "safe", "caution", "warning", or "danger".
-- Suggest safer alternatives when applicable. For non-safe commands, provide
-  a concrete safer alternative command that achieves a similar goal.
-- Keep responses short — displayed in a narrow side panel.
-- Commands may contain placeholders like [SENSITIVE_FILE] or [REDACTED] — these
-  represent privacy-redacted values. Treat them as their real equivalents.
-- If the command contains what appears to be a real API key, password, token,
-  or credential (not a placeholder), flag this immediately in your response
-  and advise the user to rotate it. This is a critical safety check.
-
-Response format (use exactly these headers):
-RISK: <safe|caution|warning|danger>
-SUMMARY: <one-line factual description>
-EXPLANATION: <why this risk level, 1-3 short sentences>
-SUGGESTION: <a concrete safer/better command, or "None" if the command is already safe>
-
-Before responding, verify internally:
-1. Warnings are specific to the actual flags/arguments passed — not generic.
-2. Risk level matches the real danger — do not over-warn safe commands.
-3. No unnecessary explanations — be concise.
-```
-
-### User message (per review request)
-
-```
-Classify this shell command:
-```
-<your command, after sanitization>
-```
-```
-
-When a non-English locale is active, a second instruction is appended to the user message:
-
-```
-IMPORTANT: You MUST write all response content (SUMMARY, EXPLANATION, SUGGESTION)
-in German only. Do not use English in those fields.
-```
-(Language name varies by locale. Response format headers stay in English.)
-
-### Deep script analysis (Layer 3 — automatic when triggered)
-
-When a command pipes a remote script to a shell (e.g. `curl ... | bash`), ridinCLIgun
-fetches the script and sends it for a separate analysis. This uses a different prompt:
-
-```
-You are a script security analyzer in ridinCLIgun, a terminal safety tool.
-
-A user is about to download and execute a remote script. You must analyze
-the script content and report what it does in plain, factual language.
-
-Rules:
-- List every significant action the script takes (installs, modifies, deletes, downloads)
-- Flag any network calls, privilege escalation (sudo), or persistence mechanisms
-- Flag obfuscated code, encoded payloads, or suspicious patterns
-- Rate overall risk: "safe", "caution", "warning", or "danger"
-- Keep the summary short — it's shown in a narrow side panel
-- Be factual, not dramatic
-
-Response format:
-RISK: <safe|caution|warning|danger>
-SUMMARY: <one-line description of what the script does>
-ACTIONS:
-- <action 1>
-- <action 2>
-- ...
-CONCERNS: <security concerns, or "None">
-```
-
-The user message includes the download URL and the fetched script content.
-Scripts are fetched up to **1 MB**. If the script exceeds the active model's context
-window, it is trimmed to fit and the analysis includes a warning that unreviewed
-code may be present.
-
-### Summary
-
-The AI receives either a single command or a fetched script — never both at once,
-never with history, never with environment data.
-
-## AI prompt safety net
-
-The system prompt includes an explicit instruction to flag real credentials
-that slip past the sanitization filters — and advise immediate rotation.
-This is a last line of defense, not a primary control.
-
----
-
-*This document reflects the security posture of v0.4.*
+ .

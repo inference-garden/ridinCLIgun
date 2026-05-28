@@ -45,7 +45,7 @@ for cmd in safe_tests:
     status = "\u2705" if ok else "\u274c"
     if not ok:
         all_pass = False
-    print(f"{status} safe: \"{cmd}\" -> {result.highest_risk.value}")
+    print(f'{status} safe: "{cmd}" -> {result.highest_risk.value}')
 
 print()
 if all_pass:

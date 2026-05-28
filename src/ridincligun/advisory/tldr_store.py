@@ -28,22 +28,26 @@ from pathlib import Path
 
 # ── Data types ────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class TldrExample:
     """One usage example from a tldr page."""
-    description: str   # human description of what the example does
-    command: str       # the command with {{placeholders}}
+
+    description: str  # human description of what the example does
+    command: str  # the command with {{placeholders}}
 
 
 @dataclass(frozen=True)
 class TldrPage:
     """A parsed tldr page for a single command."""
+
     command: str
     description: str
     examples: list[TldrExample]
 
 
 # ── Store ─────────────────────────────────────────────────────────
+
 
 class TldrStore:
     """Offline tldr page store — loads once per locale, serves forever."""

@@ -201,11 +201,7 @@ def load_config(config_dir: Path | None = None) -> Config:
         "mistral": "MISTRAL_API_KEY",
     }
     key_name = _KEY_MAP.get(config.provider.kind.lower(), "ANTHROPIC_API_KEY")
-    config.api_key = (
-        env_vars.get(key_name, "")
-        or os.environ.get(key_name, "")
-        or ""
-    )
+    config.api_key = env_vars.get(key_name, "") or os.environ.get(key_name, "") or ""
 
     config.first_run = is_first_run
     return config

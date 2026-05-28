@@ -24,15 +24,15 @@ def test_mistral_adapter_configured():
 
 def test_mistral_adapter_name():
     """Mistral adapter name includes provider and model."""
-    adapter = MistralAdapter(api_key="test-key", model="mistral-small-latest")
+    adapter = MistralAdapter(api_key="test-key", model="mistral-small-2603")
     assert "Mistral" in adapter.name
-    assert "mistral-small-latest" in adapter.name
+    assert "mistral-small-2603" in adapter.name
 
 
 def test_mistral_adapter_default_model():
-    """Mistral adapter uses mistral-small-latest by default."""
+    """Mistral adapter uses mistral-small-2603 by default."""
     adapter = MistralAdapter(api_key="test-key")
-    assert "mistral-small-latest" in adapter.name
+    assert "mistral-small-2603" in adapter.name
 
 
 def test_mistral_parse_response_full():

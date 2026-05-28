@@ -28,8 +28,8 @@ from dataclasses import dataclass, field
 class SecretMatch:
     """A single detected secret in the command."""
 
-    kind: str          # e.g. "api_key", "password_flag", "credential_url"
-    description: str   # human-readable explanation
+    kind: str  # e.g. "api_key", "password_flag", "credential_url"
+    description: str  # human-readable explanation
 
 
 @dataclass
@@ -105,7 +105,6 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
         "api_key",
         "PyPI API token detected",
     ),
-
     # ── Password flags ─────────────────────────────────────────────
     # Require -p followed by a word that looks like a password (letters/symbols,
     # not just digits/colons which are ports like 8080:80)
@@ -119,14 +118,12 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
         "password_flag",
         "Password passed via --password flag",
     ),
-
     # ── Credential URLs ────────────────────────────────────────────
     (
         re.compile(r"://[^:/@\s]+:[^:/@\s]+@"),
         "credential_url",
         "Credentials embedded in URL (user:pass@host)",
     ),
-
     # ── Export / assignment of secrets ──────────────────────────────
     (
         re.compile(
@@ -136,14 +133,12 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
         "env_secret",
         "Secret value assigned to sensitive variable",
     ),
-
     # ── Private key content ────────────────────────────────────────
     (
         re.compile(r"-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----"),
         "private_key",
         "Private key content detected",
     ),
-
     # ── Bearer / Authorization headers ─────────────────────────────
     (
         re.compile(r"""(?:Authorization|Bearer)[:\s]+['"]?[A-Za-z0-9_.+/=-]{20,}""", re.IGNORECASE),

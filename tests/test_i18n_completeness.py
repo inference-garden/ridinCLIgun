@@ -45,7 +45,8 @@ def _non_en_locales() -> list[str]:
     if not _LOCALES_DIR.is_dir():
         return []
     return sorted(
-        d.name for d in _LOCALES_DIR.iterdir()
+        d.name
+        for d in _LOCALES_DIR.iterdir()
         if d.is_dir() and d.name != "en" and (d / "ui.toml").exists()
     )
 
@@ -65,9 +66,8 @@ def test_ui_completeness(locale: str, en_ui_keys: set[str]):
     """Every EN ui.toml key must exist in the locale's ui.toml."""
     locale_keys = _load_keys(locale, "ui.toml")
     missing = en_ui_keys - locale_keys
-    assert not missing, (
-        f"Locale '{locale}' ui.toml is missing {len(missing)} keys:\n"
-        + "\n".join(sorted(missing)[:20])
+    assert not missing, f"Locale '{locale}' ui.toml is missing {len(missing)} keys:\n" + "\n".join(
+        sorted(missing)[:20]
     )
 
 

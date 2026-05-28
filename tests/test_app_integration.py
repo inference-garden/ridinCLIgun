@@ -34,6 +34,7 @@ def _test_config(tmp_path) -> Config:
         ai_enabled_default=False,
         api_key="",
         provider=ProviderSettings(),
+        language="en",  # pin locale so tests don't depend on $LANG
     )
 
 
@@ -68,28 +69,24 @@ async def test_app_initial_state(app_config):
 
 @pytest.mark.asyncio
 async def test_app_secret_mode_toggle(app_config):
-    """Ctrl+G, S toggles secret mode."""
+    """F5 toggles secret mode."""
     app = RidinCLIgunApp(config=app_config)
     async with app.run_test(size=(120, 40)) as pilot:
         assert not app.state.secret_mode
-        # Leader key sequence: Ctrl+G then S
-        await pilot.press("ctrl+g")
-        await pilot.press("s")
+        await pilot.press("f5")
         assert app.state.secret_mode
         # Toggle back
-        await pilot.press("ctrl+g")
-        await pilot.press("s")
+        await pilot.press("f5")
         assert not app.state.secret_mode
 
 
 @pytest.mark.asyncio
 async def test_app_ai_toggle(app_config):
-    """Ctrl+G, A toggles AI enabled state."""
+    """F4 toggles AI enabled state."""
     app = RidinCLIgunApp(config=app_config)
     async with app.run_test(size=(120, 40)) as pilot:
         assert not app.state.ai_enabled
-        await pilot.press("ctrl+g")
-        await pilot.press("a")
+        await pilot.press("f4")
         assert app.state.ai_enabled
 
 
@@ -145,8 +142,7 @@ async def test_secret_mode_toggle_uses_toast(app_config):
         advisory = app.query_one("#advisory-pane", AdvisoryPane)
 
         # Toggle secret mode
-        await pilot.press("ctrl+g")
-        await pilot.press("s")
+        await pilot.press("f5")
         assert app.state.secret_mode
 
         # The old "secret mode" notice must NOT appear in the advisory pane.
@@ -168,8 +164,7 @@ async def test_ai_off_toggle_uses_toast(app_config):
         app.state.ai_enabled = True
 
         # Toggle AI off
-        await pilot.press("ctrl+g")
-        await pilot.press("a")
+        await pilot.press("f4")
         assert not app.state.ai_enabled
 
         # The old "AI is off" notice must NOT appear in the advisory pane.
@@ -199,6 +194,7 @@ async def test_onboarding_shown_on_first_run(tmp_path):
         api_key="",
         provider=ProviderSettings(),
         first_run=True,
+        language="en",  # pin locale so tests don't depend on $LANG
     )
     app = RidinCLIgunApp(config=config)
     async with app.run_test(size=(120, 40)) as _pilot:
@@ -214,8 +210,7 @@ async def test_help_not_dismissed_by_typing(app_config):
     app = RidinCLIgunApp(config=app_config)
     async with app.run_test(size=(120, 40)) as pilot:
         # Show shortcuts help
-        await pilot.press("ctrl+g")
-        await pilot.press("h")
+        await pilot.press("f1")
         assert app._help_showing
 
         advisory = app.query_one("#advisory-pane", AdvisoryPane)
@@ -246,8 +241,7 @@ async def test_help_dismissed_by_escape(app_config):
     app = RidinCLIgunApp(config=app_config)
     async with app.run_test(size=(120, 40)) as pilot:
         # Show shortcuts help
-        await pilot.press("ctrl+g")
-        await pilot.press("h")
+        await pilot.press("f1")
         assert app._help_showing
 
         # Press Escape — should dismiss help
@@ -257,11 +251,11 @@ async def test_help_dismissed_by_escape(app_config):
 
 @pytest.mark.asyncio
 async def test_history_browser_opens_via_leader_key(app_config):
-    """Ctrl+G, K should open the history browser."""
+    """Ctrl+G, H should open the history browser."""
     app = RidinCLIgunApp(config=app_config)
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("ctrl+g")
-        await pilot.press("k")
+        await pilot.press("h")
         await pilot.pause()
 
         assert len(app.screen_stack) > 1
@@ -274,7 +268,7 @@ async def test_history_browser_closes_on_escape(app_config):
     app = RidinCLIgunApp(config=app_config)
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("ctrl+g")
-        await pilot.press("k")
+        await pilot.press("h")
         await pilot.pause()
 
         assert len(app.screen_stack) > 1

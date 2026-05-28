@@ -212,10 +212,7 @@ def test_save_api_key_writes_to_env(settings_config):
 def test_save_api_key_updates_existing(settings_config):
     """Saving a key that already exists should update it."""
     # Pre-populate .env
-    settings_config.env_file.write_text(
-        "# credentials\n"
-        "MISTRAL_API_KEY=old-key\n"
-    )
+    settings_config.env_file.write_text("# credentials\nMISTRAL_API_KEY=old-key\n")
 
     screen = SettingsScreen(settings_config)
     screen._save_api_key("MISTRAL_API_KEY", "new-key-67890")
@@ -228,10 +225,7 @@ def test_save_api_key_updates_existing(settings_config):
 def test_save_api_key_uncomments_existing(settings_config):
     """Saving a key that's commented out should uncomment and set it."""
     # .env has commented key (default template)
-    settings_config.env_file.write_text(
-        "# ridinCLIgun API credentials\n"
-        "# ANTHROPIC_API_KEY=\n"
-    )
+    settings_config.env_file.write_text("# ridinCLIgun API credentials\n# ANTHROPIC_API_KEY=\n")
 
     screen = SettingsScreen(settings_config)
     screen._save_api_key("ANTHROPIC_API_KEY", "sk-ant-test")

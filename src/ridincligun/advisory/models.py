@@ -19,10 +19,10 @@ from ridincligun.advisory.tldr_store import TldrExample, TldrPage  # noqa: F401
 class RiskLevel(Enum):
     """Risk severity levels for command warnings."""
 
-    SAFE = "safe"          # No known risk
-    CAUTION = "caution"    # Mild heads-up (yellow/dim)
-    WARNING = "warning"    # Significant risk (amber/bold)
-    DANGER = "danger"      # Critical risk (red/bold)
+    SAFE = "safe"  # No known risk
+    CAUTION = "caution"  # Mild heads-up (yellow/dim)
+    WARNING = "warning"  # Significant risk (amber/bold)
+    DANGER = "danger"  # Critical risk (red/bold)
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,7 @@ class Warning:
     risk: RiskLevel
     summary: str
     suggestion: str
-    family: str        # e.g. "rm", "curl_pipe"
+    family: str  # e.g. "rm", "curl_pipe"
     pattern_source: str  # the regex that matched
 
 

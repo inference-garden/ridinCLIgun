@@ -21,27 +21,20 @@ def test_leader_activate():
 def test_leader_resolve_valid():
     leader = LeaderState()
     leader.activate()
-    action = leader.resolve("r")
-    assert action == LeaderAction.REVIEW
+    action = leader.resolve("x")
+    assert action == LeaderAction.RESTART_SHELL
     assert not leader.active  # deactivates after resolve
 
 
 def test_leader_resolve_all_keys():
     """All documented leader keys resolve to actions."""
     expected = {
-        "r": LeaderAction.REVIEW,
-        "a": LeaderAction.TOGGLE_AI,
-        "s": LeaderAction.TOGGLE_SECRET,
-        "h": LeaderAction.HELP,
-        "q": LeaderAction.QUIT,
         "x": LeaderAction.RESTART_SHELL,
         "d": LeaderAction.DEBUG,
-        "c": LeaderAction.COPY,
-        "v": LeaderAction.PASTE,
-        "i": LeaderAction.INSERT_SUGGESTION,
-        "k": LeaderAction.HISTORY,
-        "?": LeaderAction.CMD_HELP,
+        "q": LeaderAction.QUIT,
         "m": LeaderAction.MODEL_SELECT,
+        "h": LeaderAction.HISTORY,
+        "g": LeaderAction.SETTINGS,
     }
     for key, expected_action in expected.items():
         leader = LeaderState()
@@ -71,6 +64,6 @@ def test_leader_resolve_when_inactive():
     leader = LeaderState()
     # Note: the App checks leader.active before calling resolve,
     # so resolve itself doesn't gate on active state — it just maps keys.
-    action = leader.resolve("r")
-    assert action == LeaderAction.REVIEW  # maps the key regardless
+    action = leader.resolve("x")
+    assert action == LeaderAction.RESTART_SHELL  # maps the key regardless
     assert not leader.active  # but deactivates

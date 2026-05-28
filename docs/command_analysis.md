@@ -1,89 +1,58 @@
-# Command Analysis — Decision Matrix
+# Command Analysis
 
-How ridinCLIgun decides what to check and when.
+This document covers what ridinCLIgun checks, when it checks it, and what each layer covers. Data flow lives in `security.md`; prompt composition lives in `prompt_category_system.md`.
 
----
+## Always-on local advisory
 
-## Always-on: offline command knowledge
+These components run locally and do not require a provider:
 
-Before any risk analysis happens, ridinCLIgun enriches the advisory pane
-with information from its **bundled command catalog** (tldr-pages v2.3, MIT):
+| Component | Trigger | Current source | Output |
+|-----------|---------|----------------|--------|
+| Risk pattern catalog | every keystroke | 17 command families / 31 regex patterns | matched warnings |
+| tldr command catalog | every keystroke | bundled tldr-pages data | description + examples |
+| Typo detector | when command name is unknown | tldr commands + catalog + PATH scan | nearest command suggestion |
 
-- **Description** — what the command does, in one sentence
-- **Usage examples** — real-world examples from the community, including flag combinations
-- **Typo detection** — if the command isn't recognized, a Levenshtein match suggests the likely intended command ("Did you mean `git`?")
+The tldr bundle currently covers 6,615 commands.
 
-This runs on every keystroke, fully offline, with no API key needed.
-It is not a "layer" in the risk pipeline — it runs in parallel and always shows,
-whether the command is safe, risky, or unknown.
+## Layered review flow
 
-The catalog covers 6,615 commands (common + Linux + macOS platforms).
-German and French locale overlays are available — the advisory pane shows
-translated pages when `language = "de"` or `"fr"` is set.
+| Layer | Trigger | Network | What happens |
+|-------|---------|---------|--------------|
+| Local advisory | every keystroke | no | regex warnings, tldr lookup, typo detection |
+| Layer 2 AI review | user presses `F2` with AI enabled and provider configured | yes | current command is reviewed by the selected provider |
+| Layer 3 deep analysis | automatically after Layer 2 if a remote-execute pattern matched | yes | URL is fetched locally, then script content is sent for analysis |
 
----
+Layer 2 uses the matched warning families to resolve a prompt category before sending the command.
 
-## Three layers of risk analysis
+## Layer 3 trigger rules
 
-| Layer | Name | Speed | Trigger | What happens |
-|-------|------|-------|---------|-------------|
-| 1 | **Local warning** | Instant | Every keystroke | Regex patterns match against a catalog of 31 known-dangerous command families. No network, no AI. |
-| 2 | **AI structure review** | ~2–5s | User presses `Ctrl+G, R` | Command is sent to the AI for risk classification. Only privacy-sensitive values (secrets, credential paths) are redacted — full command structure is preserved so the AI can give accurate assessments. |
-| 3 | **Deep script analysis** | ~5–15s | Automatic after Layer 2 when a remote-execute pattern is detected | The remote script is fetched, then sent to the AI for content analysis. |
-
-Layer 1 and the offline catalog run together on every keystroke. Layers 2 and 3 are
-opt-in and require an AI provider to be configured.
-
----
-
-## When does Layer 3 trigger?
-
-Layer 3 activates automatically after a Layer 2 review when the command matches one of these patterns:
+Layer 3 currently activates for these command shapes:
 
 | Pattern | Example |
 |---------|---------|
-| Pipe to shell | `curl https://example.com/install.sh \| bash` |
-| Pipe to shell (wget) | `wget -qO- https://example.com/setup \| sh` |
-| Download then execute | `curl -o script.sh https://example.com/s.sh && bash script.sh` |
-| URL + shell pipe | Any command containing both a URL and `\| bash/sh/zsh` |
+| pipe to shell | `curl https://example.com/install.sh | bash` |
+| pipe to shell via `wget` | `wget -qO- https://example.com/setup | sh` |
+| download then execute same file | `curl -o script.sh https://example.com/s.sh && bash script.sh` |
+| fallback URL + shell pipe | any command containing both an `http(s)://...` URL and `| bash`, `| sh`, `| zsh`, or `| dash` |
 
----
+The explicit download-and-execute matcher also recognizes `source script.sh`.
 
-## What Layer 3 reports
+## Layer 3 fetch and fit limits
 
-The AI analyzes the actual script content and reports:
-- **What the script does** — installs, modifies, deletes, downloads
-- **Network calls** — does it phone home, download more code?
-- **Privilege escalation** — does it use `sudo`, modify system files?
-- **Persistence** — does it install services, cron jobs, shell hooks?
-- **Obfuscation** — encoded payloads, eval chains, minified code
-- **Overall risk** — safe / caution / warning / danger
+| Limit | Current value | Effect |
+|-------|---------------|--------|
+| max fetch size | 1,048,576 bytes | content above 1 MB is cut locally |
+| fetch timeout | 15 seconds | slow or hanging fetches abort |
+| allowed schemes | `http`, `https` | other schemes are rejected |
+| execution | never | content is read only |
+| context fitting | model-dependent | fetched script may be truncated again before provider send |
 
----
+## What the layers do not cover
 
-## Safety limits
+- no shell AST or semantic shell parsing
+- no analysis across separate commands or sessions
+- no deep analysis for plain downloads that are not executed in the same command
+- no deep analysis for heredocs, stdin-fed content, or shell builtins such as `source` unless matched by the download-and-execute regex
+- no authenticated fetch flow for login-walled scripts
+- no guarantee against novel credential formats or obfuscated shell tricks
 
-| Limit | Value | Reason |
-|-------|-------|--------|
-| Max script fetch size | 1 MB | Prevent memory abuse from large scripts |
-| Context window fitting | Automatic | Script is trimmed to fit the active model's context window before sending. A truncation warning is included in the analysis if trimming occurred. |
-| Fetch timeout | 5 seconds | Prevent hanging on slow or malicious servers |
-| Protocols | HTTP, HTTPS only | No `file://`, `ftp://`, or exotic schemes |
-| Execution | Never | Content is only read and sent to AI for analysis |
-
----
-
-## What is NOT checked
-
-- Scripts loaded via `source`, `.`, or shell builtins
-- Commands that download but don't immediately execute (`curl -O` alone)
-- Scripts behind authentication (login-walled URLs)
-- Multi-step attack chains across separate commands
-- Content that arrives via stdin, clipboard, or heredoc
-- Novel or obfuscated credential formats not covered by the regex catalog
-
-This matrix is best-effort. It makes dangerous patterns visible — it does not guarantee safety.
-
----
-
-*Updated for v0.4*

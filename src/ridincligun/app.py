@@ -82,11 +82,15 @@ class RidinCLIgunApp(App):
     """
 
     BINDINGS = [
-        ("ctrl+q", "quit", "Quit"),
         ("ctrl+g", "leader", "Leader key"),
         ("escape", "dismiss_help", "Dismiss help"),
-        ("f6", "grow_divider", "Divider left (more advisory)"),
-        ("f7", "shrink_divider", "Divider right (more shell)"),
+        ("f1", "show_help", "Help"),
+        ("f2", "review", "Review"),
+        ("f3", "insert_suggestion", "Insert suggestion"),
+        ("f4", "toggle_ai", "Toggle AI"),
+        ("f5", "toggle_secret", "Toggle Secret Mode"),
+        ("f9", "grow_divider", "Divider left (more advisory)"),
+        ("f10", "shrink_divider", "Divider right (more shell)"),
     ]
 
     def __init__(self, config: Config | None = None) -> None:
@@ -194,16 +198,14 @@ class RidinCLIgunApp(App):
         AI review and help persist while the user edits the command.
         AI review clears when:
         - Command becomes empty (executed via Enter, or cleared via Ctrl+C/U)
-        - A new review is requested (Ctrl+G, R)
+        - A new review is requested (F2)
         Help clears only on Escape or explicit new leader action.
         """
         command = message.command
 
         # ── Secret detection always runs (state update) ────────────
         secret_result = detect_secrets(command) if command else None
-        self.state.secrets_detected = (
-            secret_result.has_secrets if secret_result else False
-        )
+        self.state.secrets_detected = secret_result.has_secrets if secret_result else False
 
         # Help showing → keep help visible, don't update advisory pane
         if self._help_showing:
@@ -249,59 +251,25 @@ class RidinCLIgunApp(App):
             pass
 
     def _dispatch_leader_action(self, action: LeaderAction) -> None:
-        """Execute a leader key action."""
-        # Cancel pending redaction preview on any action other than REVIEW
-        if action != LeaderAction.REVIEW and self._pending_review_command is not None:
+        """Execute a leader key action.
+
+        Frequent actions (Help, Review, Insert, Toggle AI, Toggle Secret)
+        are bound to F1–F5 directly — they don't go through the leader.
+        The leader handles less frequent or destructive actions only.
+        """
+        # Any leader action cancels a pending redaction preview.
+        if self._pending_review_command is not None:
             self._pending_review_command = None
 
         match action:
-            case LeaderAction.TOGGLE_AI:
-                self.state.ai_enabled = not self.state.ai_enabled
-                if self.state.ai_enabled and not self._provider.is_configured:
-                    self._update_ai_status("offline")
-                    self._toast(t("toast.ai_on_no_key"), severity="warning")
-                elif self.state.ai_enabled:
-                    self._toast(t("toast.ai_on"))
-                    # Validate provider in background — updates status on result
-                    asyncio.create_task(self._validate_provider())
-                else:
-                    self._update_ai_status("")
-                    self._toast(t("toast.ai_off"))
-                self._sync_status_bar()
-
-            case LeaderAction.TOGGLE_SECRET:
-                self.state.secret_mode = not self.state.secret_mode
-                # Invalidate any in-flight AI review when entering secret mode
-                if self.state.secret_mode:
-                    self._review_generation += 1
-                    if self._review_task and not self._review_task.done():
-                        self._review_task.cancel()
-                        self._review_task = None
-                    self._toast(t("toast.secret_on"))
-                else:
-                    self._toast(t("toast.secret_off"))
-                self._sync_status_bar()
-
-            case LeaderAction.HELP:
-                self._show_help()
-
             case LeaderAction.QUIT:
                 self.action_quit()
-
-            case LeaderAction.REVIEW:
-                self._trigger_ai_review()
 
             case LeaderAction.RESTART_SHELL:
                 self._restart_shell()
 
             case LeaderAction.DEBUG:
                 self._show_debug()
-
-            case LeaderAction.INSERT_SUGGESTION:
-                self._insert_suggestion()
-
-            case LeaderAction.CMD_HELP:
-                self._show_cmd_help()
 
             case LeaderAction.MODEL_SELECT:
                 self._show_model_selector()
@@ -312,11 +280,48 @@ class RidinCLIgunApp(App):
             case LeaderAction.SETTINGS:
                 self._open_settings()
 
-            case LeaderAction.COPY:
-                self._do_copy()
+    # ── F-key actions ────────────────────────────────────────────
 
-            case LeaderAction.PASTE:
-                self._do_paste()
+    def action_show_help(self) -> None:
+        """F1 — show shortcut overlay."""
+        self._show_help()
+
+    def action_review(self) -> None:
+        """F2 — trigger AI review of the current command."""
+        self._trigger_ai_review()
+
+    def action_insert_suggestion(self) -> None:
+        """F3 — insert the last AI suggestion into the shell input."""
+        self._insert_suggestion()
+
+    def action_toggle_ai(self) -> None:
+        """F4 — toggle AI review on/off."""
+        self.state.ai_enabled = not self.state.ai_enabled
+        if self.state.ai_enabled and not self._provider.is_configured:
+            self._update_ai_status("offline")
+            self._toast(t("toast.ai_on_no_key"), severity="warning")
+        elif self.state.ai_enabled:
+            self._toast(t("toast.ai_on"))
+            # Validate provider in background — updates status on result
+            asyncio.create_task(self._validate_provider())
+        else:
+            self._update_ai_status("")
+            self._toast(t("toast.ai_off"))
+        self._sync_status_bar()
+
+    def action_toggle_secret(self) -> None:
+        """F5 — toggle Secret Mode (suppresses AI calls)."""
+        self.state.secret_mode = not self.state.secret_mode
+        # Invalidate any in-flight AI review when entering secret mode
+        if self.state.secret_mode:
+            self._review_generation += 1
+            if self._review_task and not self._review_task.done():
+                self._review_task.cancel()
+                self._review_task = None
+            self._toast(t("toast.secret_on"))
+        else:
+            self._toast(t("toast.secret_off"))
+        self._sync_status_bar()
 
     # ── Secret warning ─────────────────────────────────────────────
 
@@ -394,7 +399,7 @@ class RidinCLIgunApp(App):
         """Trigger an AI review of the current command.
 
         If redaction preview is enabled and the command gets redacted,
-        shows a preview first. Press Ctrl+G, R again to confirm.
+        shows a preview first. Press F2 again to confirm.
         """
         # Second press confirms a pending preview
         if self._pending_review_command is not None:
@@ -476,12 +481,13 @@ class RidinCLIgunApp(App):
 
         # Launch async review with current generation
         gen = self._review_generation
-        self._review_task = asyncio.create_task(
-            self._do_ai_review(command, gen, system_prompt)
-        )
+        self._review_task = asyncio.create_task(self._do_ai_review(command, gen, system_prompt))
 
     async def _do_ai_review(
-        self, command: str, generation: int = 0, system_prompt: str = "",
+        self,
+        command: str,
+        generation: int = 0,
+        system_prompt: str = "",
     ) -> None:
         """Perform the AI review asynchronously (Layer 2).
 
@@ -530,11 +536,13 @@ class RidinCLIgunApp(App):
         Appends results to the existing AI review in the advisory pane.
         """
         # Show "fetching" indicator appended to current review
-        self._append_advisory_lines([
-            ("", ""),
-            (f"  {t('deep.fetching')}", "bold cyan"),
-            (f"  {trigger.url}", "dim"),
-        ])
+        self._append_advisory_lines(
+            [
+                ("", ""),
+                (f"  {t('deep.fetching')}", "bold cyan"),
+                (f"  {trigger.url}", "dim"),
+            ]
+        )
 
         # Fetch the script
         result = await fetch_script(trigger.url)
@@ -546,20 +554,23 @@ class RidinCLIgunApp(App):
             return  # Suppressed
 
         if not result.success:
-            self._append_advisory_lines([
-                ("", ""),
-                (f"  {t('deep.fetch_failed')}", "bold yellow"),
-                (f"  {result.error}", "dim"),
-                ("", ""),
-                (f"  {t('deep.fetch_caution1')}", "dim"),
-                (f"  {t('deep.fetch_caution2')}", "dim yellow"),
-            ])
+            self._append_advisory_lines(
+                [
+                    ("", ""),
+                    (f"  {t('deep.fetch_failed')}", "bold yellow"),
+                    (f"  {result.error}", "dim"),
+                    ("", ""),
+                    (f"  {t('deep.fetch_caution1')}", "dim"),
+                    (f"  {t('deep.fetch_caution2')}", "dim yellow"),
+                ]
+            )
             return
 
         # Fit script to model's context window
         model_name = self._provider.model_id if self._provider else ""
         content, was_truncated = fit_script_to_context(
-            result.content, model_name,
+            result.content,
+            model_name,
         )
 
         # Show script size, then send to AI
@@ -569,17 +580,22 @@ class RidinCLIgunApp(App):
             (f"  {t('deep.script_fetched', size=size_info)}", "cyan"),
         ]
         if was_truncated:
-            lines.extend([
-                (f"  {t('deep.too_large')}", "bold yellow"),
-                (f"  {t('deep.partial')}", "dim yellow"),
-            ])
+            lines.extend(
+                [
+                    (f"  {t('deep.too_large')}", "bold yellow"),
+                    (f"  {t('deep.partial')}", "dim yellow"),
+                ]
+            )
         lines.append((f"  {t('deep.analyzing')}", "bold cyan"))
 
         self._append_advisory_lines(lines)
 
         # Build deep analysis prompt and send to provider
         prompt = build_deep_analysis_prompt(
-            trigger.url, content, was_truncated, locale=get_locale(),
+            trigger.url,
+            content,
+            was_truncated,
+            locale=get_locale(),
         )
         analysis = await self._provider.review(
             prompt,
@@ -593,50 +609,62 @@ class RidinCLIgunApp(App):
             return
 
         if analysis.success and analysis.response:
-            self._append_advisory_lines([
-                ("", ""),
-                (f"  {t('deep.analysis_title')}", "bold magenta"),
-                ("", ""),
-                (f"  {analysis.response.summary}", "yellow"),
-                ("", ""),
-            ])
+            self._append_advisory_lines(
+                [
+                    ("", ""),
+                    (f"  {t('deep.analysis_title')}", "bold magenta"),
+                    ("", ""),
+                    (f"  {analysis.response.summary}", "yellow"),
+                    ("", ""),
+                ]
+            )
             if analysis.response.explanation:
-                self._append_advisory_lines([
-                    (f"  {analysis.response.explanation}", "dim"),
-                    ("", ""),
-                ])
+                self._append_advisory_lines(
+                    [
+                        (f"  {analysis.response.explanation}", "dim"),
+                        ("", ""),
+                    ]
+                )
             if analysis.response.suggestion:
-                self._append_advisory_lines([
-                    (f"  💡 {analysis.response.suggestion}", "dim green"),
-                    ("", ""),
-                ])
+                self._append_advisory_lines(
+                    [
+                        (f"  💡 {analysis.response.suggestion}", "dim green"),
+                        ("", ""),
+                    ]
+                )
             if was_truncated:
-                self._append_advisory_lines([
-                    (f"  {t('deep.partial_title')}", "bold yellow"),
-                    (f"  {t('deep.partial_line1')}", "dim yellow"),
-                    (f"  {t('deep.partial_line2')}", "dim yellow"),
-                    (f"  {t('deep.partial_line3')}", "dim yellow"),
-                    (f"  {t('deep.partial_line4')}", "dim yellow"),
-                    ("", ""),
-                ])
+                self._append_advisory_lines(
+                    [
+                        (f"  {t('deep.partial_title')}", "bold yellow"),
+                        (f"  {t('deep.partial_line1')}", "dim yellow"),
+                        (f"  {t('deep.partial_line2')}", "dim yellow"),
+                        (f"  {t('deep.partial_line3')}", "dim yellow"),
+                        (f"  {t('deep.partial_line4')}", "dim yellow"),
+                        ("", ""),
+                    ]
+                )
 
-            self._history.append(HistoryEntry(
-                timestamp=now_iso(),
-                command=command,
-                source="deep_analysis",
-                risk=analysis.response.risk_assessment,
-                summary=analysis.response.summary,
-                explanation=analysis.response.explanation,
-                suggestion=analysis.response.suggestion,
-                provider=self._provider.provider_name,
-                tokens=analysis.response.input_tokens + analysis.response.output_tokens,
-            ))
+            self._history.append(
+                HistoryEntry(
+                    timestamp=now_iso(),
+                    command=command,
+                    source="deep_analysis",
+                    risk=analysis.response.risk_assessment,
+                    summary=analysis.response.summary,
+                    explanation=analysis.response.explanation,
+                    suggestion=analysis.response.suggestion,
+                    provider=self._provider.provider_name,
+                    tokens=analysis.response.input_tokens + analysis.response.output_tokens,
+                )
+            )
         else:
-            self._append_advisory_lines([
-                ("", ""),
-                (f"  {t('deep.analysis_failed')}", "bold yellow"),
-                (f"  {analysis.error_message}", "dim"),
-            ])
+            self._append_advisory_lines(
+                [
+                    ("", ""),
+                    (f"  {t('deep.analysis_failed')}", "bold yellow"),
+                    (f"  {analysis.error_message}", "dim"),
+                ]
+            )
 
     async def _validate_provider(self) -> None:
         """Quick background check if the AI provider is reachable.
@@ -653,6 +681,7 @@ class RidinCLIgunApp(App):
             # the normal advisory view for whatever command is currently in the input.
             try:
                 from ridincligun.ui.command_input import CommandInput
+
                 cmd = self.query_one(CommandInput).value.strip()
                 result_local = self._engine.analyze(cmd, locale=get_locale())
                 self._show_local_advisory(result_local)
@@ -667,7 +696,7 @@ class RidinCLIgunApp(App):
         """Display an AI review result in the advisory pane. Persists until next review."""
         self._ai_review_showing = True
 
-        # Store suggestion for insert shortcut (Ctrl+G, I)
+        # Store suggestion for insert shortcut (F3)
         self._last_suggestion = response.suggestion if response.suggestion else ""
 
         risk_styles = {
@@ -702,10 +731,12 @@ class RidinCLIgunApp(App):
         if total_tokens > 0:
             tok_in = response.input_tokens
             tok_out = response.output_tokens
-            lines.append((
-                f"  📊 {tok_in} in + {tok_out} out = {total_tokens} tok",
-                "dim",
-            ))
+            lines.append(
+                (
+                    f"  📊 {tok_in} in + {tok_out} out = {total_tokens} tok",
+                    "dim",
+                )
+            )
 
         try:
             advisory = self.query_one("#advisory-pane", AdvisoryPane)
@@ -714,17 +745,19 @@ class RidinCLIgunApp(App):
             pass
 
         # Log to history (item k)
-        self._history.append(HistoryEntry(
-            timestamp=now_iso(),
-            command=command,
-            source="ai",
-            risk=response.risk_assessment,
-            summary=response.summary,
-            explanation=response.explanation,
-            suggestion=response.suggestion,
-            provider=self._provider.provider_name,
-            tokens=response.input_tokens + response.output_tokens,
-        ))
+        self._history.append(
+            HistoryEntry(
+                timestamp=now_iso(),
+                command=command,
+                source="ai",
+                risk=response.risk_assessment,
+                summary=response.summary,
+                explanation=response.explanation,
+                suggestion=response.suggestion,
+                provider=self._provider.provider_name,
+                tokens=response.input_tokens + response.output_tokens,
+            )
+        )
 
     # ── Suggestion insert (item g) ──────────────────────────────────
 
@@ -771,18 +804,54 @@ class RidinCLIgunApp(App):
             return backtick.group(1).strip()
 
         _CMD_VERBS = {  # noqa: N806
-            "ls", "rm", "cp", "mv", "mkdir", "chmod", "chown", "find", "grep",
-            "sed", "awk", "cat", "head", "tail", "sort", "tar", "zip", "unzip",
-            "git", "docker", "kubectl", "npm", "pip", "python", "curl", "wget",
-            "ssh", "scp", "rsync", "dd", "mount", "umount", "kill", "pkill",
-            "sudo", "brew", "apt", "yum", "dnf", "pacman",
+            "ls",
+            "rm",
+            "cp",
+            "mv",
+            "mkdir",
+            "chmod",
+            "chown",
+            "find",
+            "grep",
+            "sed",
+            "awk",
+            "cat",
+            "head",
+            "tail",
+            "sort",
+            "tar",
+            "zip",
+            "unzip",
+            "git",
+            "docker",
+            "kubectl",
+            "npm",
+            "pip",
+            "python",
+            "curl",
+            "wget",
+            "ssh",
+            "scp",
+            "rsync",
+            "dd",
+            "mount",
+            "umount",
+            "kill",
+            "pkill",
+            "sudo",
+            "brew",
+            "apt",
+            "yum",
+            "dnf",
+            "pacman",
         }
 
         # Try to find a command fragment inside prose like
         # "Use rm -ri /tmp/test instead" or "Try: ls -la /home"
         # Split on prose intro words; avoid splitting on ". " inside commands
-        fragments = re.split(r"(?:^|\s)(?:Use|Try|Run|Consider|Instead)[:\s]+",
-                             suggestion, flags=re.IGNORECASE)
+        fragments = re.split(
+            r"(?:^|\s)(?:Use|Try|Run|Consider|Instead)[:\s]+", suggestion, flags=re.IGNORECASE
+        )
         for frag in fragments:
             frag = frag.strip().rstrip(".")
             words = frag.split()
@@ -793,169 +862,54 @@ class RidinCLIgunApp(App):
                 # A word is "prose" if it's a common English stop word AND
                 # doesn't look like a flag or path (no leading - / . ~).
                 _PROSE_WORDS = {  # noqa: N806
-                    "instead", "first", "before", "after", "rather", "which",
-                    "that", "this", "the", "for", "to", "or",
-                    "and", "if", "when", "so", "but", "as",
+                    "instead",
+                    "first",
+                    "before",
+                    "after",
+                    "rather",
+                    "which",
+                    "that",
+                    "this",
+                    "the",
+                    "for",
+                    "to",
+                    "or",
+                    "and",
+                    "if",
+                    "when",
+                    "so",
+                    "but",
+                    "as",
                 }
                 cmd_parts = []
                 for w in words:
                     # Stop at parenthetical explanations like "(owner has...)"
                     if w.startswith("("):
                         break
-                    if (w.lower() in _PROSE_WORDS
-                            and len(cmd_parts) > 1
-                            and not w.startswith(("-", "/", ".", "~"))):
+                    if (
+                        w.lower() in _PROSE_WORDS
+                        and len(cmd_parts) > 1
+                        and not w.startswith(("-", "/", ".", "~"))
+                    ):
                         break
                     cmd_parts.append(w)
                 return " ".join(cmd_parts)
 
         return ""
 
-    # ── Command help (item c) ──────────────────────────────────────
-
-    def _show_cmd_help(self) -> None:
-        """Run `cmd --help` silently and display output in advisory pane."""
-        try:
-            shell = self.query_one("#shell-pane", ShellPane)
-            command = extract_current_command(shell._screen)
-        except NoMatches:
-            return
-
-        if not command.strip():
-            self._show_advisory_notice(t("cmd_help.no_command"))
-            return
-
-        # Extract the base command (first word, strip sudo)
-        parts = command.strip().split()
-        if parts[0] == "sudo" and len(parts) > 1:
-            base_cmd = parts[1]
-        else:
-            base_cmd = parts[0]
-
-        self._show_advisory_notice(
-            f"{t('cmd_help.looking_up', cmd=base_cmd)}\n\n"
-            f"{t('cmd_help.trying')}"
-        )
-        asyncio.create_task(self._fetch_cmd_help(base_cmd))
-
-    async def _fetch_cmd_help(self, cmd: str) -> None:
-        """Fetch help for a command using a fallback chain.
-
-        Tries in order: --help, -h, man (first 40 lines).
-        Sets _help_showing so content persists while the user edits.
-        """
-        import subprocess
-
-        try:
-            # Security: validate command name — no shell metacharacters
-            if not cmd.replace("-", "").replace("_", "").replace(".", "").isalnum():
-                self._show_advisory_notice(t("cmd_help.invalid_name", cmd=cmd))
-                return
-
-            _PATH_ENV = {"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"}  # noqa: N806
-
-            output = ""
-            source = ""
-
-            # Try --help, then -h. Accept output only when:
-            # - rc == 0 (command recognized the flag), or
-            # - stdout has content (some tools print help to stdout with rc != 0)
-            # Skip stderr-only output on failure — that's an error, not help.
-            for flag, label in [("--help", "--help"), ("-h", "-h")]:
-                try:
-                    result = await asyncio.to_thread(
-                        subprocess.run,
-                        [cmd, flag],
-                        capture_output=True,
-                        timeout=5,
-                        env=_PATH_ENV,
-                    )
-                    stdout = result.stdout.decode("utf-8", errors="replace")
-                    stderr = result.stderr.decode("utf-8", errors="replace")
-
-                    if result.returncode == 0 and (stdout.strip() or stderr.strip()):
-                        output = stdout if stdout.strip() else stderr
-                        source = label
-                        break
-                    elif stdout.strip():
-                        # Some tools exit non-zero but still print help to stdout
-                        output = stdout
-                        source = label
-                        break
-                    # stderr-only with non-zero rc → flag not recognized, try next
-                except (subprocess.TimeoutExpired, FileNotFoundError):
-                    continue
-
-            # Fallback to man page (first 40 lines)
-            if not output:
-                try:
-                    result = await asyncio.to_thread(
-                        subprocess.run,
-                        ["man", cmd],
-                        capture_output=True,
-                        timeout=5,
-                        env={**_PATH_ENV, "MANPAGER": "cat", "COLUMNS": "80"},
-                    )
-                    out = result.stdout.decode("utf-8", errors="replace")
-                    if out.strip():
-                        # Take first 40 lines of man output
-                        man_lines = out.splitlines()[:40]
-                        output = "\n".join(man_lines)
-                        source = "man"
-                except (subprocess.TimeoutExpired, FileNotFoundError):
-                    pass
-
-            if not output.strip():
-                self._show_advisory_notice(t("cmd_help.not_found", cmd=cmd))
-                return
-
-            # Format for advisory pane
-            lines: list[tuple[str, str]] = [
-                ("", ""),
-                (f"  📖 {cmd} {source}", "bold cyan"),
-                ("", ""),
-            ]
-
-            # Limit to ~80 lines to keep the pane manageable
-            help_lines = output.splitlines()[:80]
-            for help_line in help_lines:
-                lines.append((f"  {help_line}", "dim"))
-
-            if len(output.splitlines()) > 80:
-                lines.append(("", ""))
-                lines.append((f"  {t('cmd_help.truncated')}", "dim yellow"))
-
-            lines.append(("", ""))
-            lines.append((f"  {t('cmd_help.dismiss')}", "dim cyan"))
-
-            self._help_showing = True
-            self._ai_review_showing = False
-            try:
-                advisory = self.query_one("#advisory-pane", AdvisoryPane)
-                advisory.set_content(lines)
-            except NoMatches:
-                pass
-
-        except FileNotFoundError:
-            self._show_advisory_notice(t("cmd_help.cmd_not_found", cmd=cmd))
-        except subprocess.TimeoutExpired:
-            self._show_advisory_notice(t("cmd_help.timeout"))
-        except Exception as e:
-            self._show_advisory_notice(t("cmd_help.help_failed", error=e))
-
     # ── Model selector (item j) ────────────────────────────────────
 
     _MODEL_OPTIONS: list[tuple[str, str, str]] = [
         # (display_name, provider_kind, model_id)
-        # Mistral: https://docs.mistral.ai/getting-started/models
-        ("Mistral Small", "mistral", "mistral-small-latest"),
-        ("Mistral Large", "mistral", "mistral-large-latest"),
+        # Mistral: https://docs.mistral.ai/getting-started/models/ — verified 2026-05-16
+        ("Mistral Fast Review", "mistral", "mistral-small-2603"),
+        ("Mistral Deep Review", "mistral", "mistral-medium-3-5"),
         # Anthropic: https://platform.claude.com/docs/en/docs/about-claude/models
-        ("Anthropic Claude Sonnet 4", "anthropic", "claude-sonnet-4-20250514"),
-        ("Anthropic Claude Haiku 4.5", "anthropic", "claude-haiku-4-5-20251001"),
-        # OpenAI: https://platform.openai.com/docs/models
-        ("OpenAI GPT-4o", "openai", "gpt-4o"),
-        ("OpenAI GPT-4o mini", "openai", "gpt-4o-mini"),
+        ("Claude Fast Review", "anthropic", "claude-haiku-4-5"),
+        ("Claude Deep Review", "anthropic", "claude-sonnet-4-6"),
+        # OpenAI: https://developers.openai.com/api/docs/models — verified 2026-05-16
+        ("OpenAI Fast Review", "openai", "gpt-4.1-mini"),
+        ("OpenAI Deep Review", "openai", "gpt-5.4-mini"),
     ]
 
     def _show_model_selector(self) -> None:
@@ -1054,8 +1008,7 @@ class RidinCLIgunApp(App):
             )
         else:
             self._show_advisory_notice(
-                f"{t('model.switched', name=display_name)}\n\n"
-                f"{t('model.checking')}"
+                f"{t('model.switched', name=display_name)}\n\n{t('model.checking')}"
             )
             asyncio.create_task(self._validate_provider())
 
@@ -1064,6 +1017,7 @@ class RidinCLIgunApp(App):
     def _persist_provider_config(self, kind: str, model: str) -> None:
         """Write provider kind and model to config.toml."""
         from ridincligun.config import save_provider_config
+
         save_provider_config(self.config, kind, model)
 
     # ── Review history display (item k) ───────────────────────────
@@ -1406,30 +1360,30 @@ class RidinCLIgunApp(App):
         self._ai_review_showing = False
         try:
             advisory = self.query_one("#advisory-pane", AdvisoryPane)
-            advisory.set_content([
-                ("", ""),
-                (f"  {t('help.title')}", "bold cyan underline"),
-                ("", ""),
-                (f"  Ctrl+Q         {t('help.quit')}", ""),
-                (f"  F6             {t('help.divider_left')}", ""),
-                (f"  F7             {t('help.divider_right')}", ""),
-                ("", ""),
-                (f"  {t('help.leader_title')}", "bold"),
-                (f"  Ctrl+G, R      {t('help.review')}", ""),
-                (f"  Ctrl+G, I      {t('help.insert')}", ""),
-                (f"  Ctrl+G, K      {t('help.history')}", ""),
-                (f"  Ctrl+G, ?      {t('help.cmd_help')}", ""),
-                (f"  Ctrl+G, A      {t('help.toggle_ai')}", ""),
-                (f"  Ctrl+G, M      {t('help.model_select')}", ""),
-                (f"  Ctrl+G, G      {t('help.settings')}", ""),
-                (f"  Ctrl+G, S      {t('help.toggle_secret')}", ""),
-                (f"  Ctrl+G, H      {t('help.this_help')}", ""),
-                (f"  Ctrl+G, X      {t('help.restart_shell')}", ""),
-                (f"  Ctrl+G, D      {t('help.debug')}", ""),
-                (f"  Ctrl+G, Q      {t('help.quit_fallback')}", ""),
-                ("", ""),
-                (f"  {t('help.dismiss')}", "dim"),
-            ])
+            advisory.set_content(
+                [
+                    ("", ""),
+                    (f"  {t('help.title')}", "bold cyan underline"),
+                    ("", ""),
+                    (f"  F1             {t('help.this_help')}", ""),
+                    (f"  F2             {t('help.review')}", ""),
+                    (f"  F3             {t('help.insert')}", ""),
+                    (f"  F4             {t('help.toggle_ai')}", ""),
+                    (f"  F5             {t('help.toggle_secret')}", ""),
+                    (f"  F9             {t('help.divider_left')}", ""),
+                    (f"  F10            {t('help.divider_right')}", ""),
+                    ("", ""),
+                    (f"  {t('help.leader_title')}", "bold"),
+                    (f"  Ctrl+G, H      {t('help.history')}", ""),
+                    (f"  Ctrl+G, M      {t('help.model_select')}", ""),
+                    (f"  Ctrl+G, G      {t('help.settings')}", ""),
+                    (f"  Ctrl+G, X      {t('help.restart_shell')}", ""),
+                    (f"  Ctrl+G, D      {t('help.debug')}", ""),
+                    (f"  Ctrl+G, Q      {t('help.quit')}", ""),
+                    ("", ""),
+                    (f"  {t('help.dismiss')}", "dim"),
+                ]
+            )
         except NoMatches:
             pass
 
@@ -1446,14 +1400,12 @@ class RidinCLIgunApp(App):
         # ── Risk warnings ─────────────────────────────────────────
         # Use 1-cell Unicode symbols (not emoji) for reliable alignment.
         risk_styles = {
-            RiskLevel.DANGER:  ("bold red",    "red",      "✖"),
-            RiskLevel.WARNING: ("bold yellow",  "yellow",   "▲"),
-            RiskLevel.CAUTION: ("bold cyan",    "dim cyan", "◆"),
+            RiskLevel.DANGER: ("bold red", "red", "✖"),
+            RiskLevel.WARNING: ("bold yellow", "yellow", "▲"),
+            RiskLevel.CAUTION: ("bold cyan", "dim cyan", "◆"),
         }
         for warning in result.warnings:
-            title_style, body_style, icon = risk_styles.get(
-                warning.risk, ("bold", "dim", "●")
-            )
+            title_style, body_style, icon = risk_styles.get(warning.risk, ("bold", "dim", "●"))
             lines.append((f"  {icon} {warning.risk.value.upper()}", title_style))
             lines.append(("", ""))
             lines.append((f"  {warning.summary}", body_style))
@@ -1478,10 +1430,12 @@ class RidinCLIgunApp(App):
 
         # ── Typo suggestion ───────────────────────────────────────
         elif result.typo_suggestion:
-            lines.append((
-                f"  {t('typo.did_you_mean', suggestion=result.typo_suggestion)}",
-                "bold yellow",
-            ))
+            lines.append(
+                (
+                    f"  {t('typo.did_you_mean', suggestion=result.typo_suggestion)}",
+                    "bold yellow",
+                )
+            )
             lines.append(("", ""))
 
         # ── Fallback: nothing to show ─────────────────────────────

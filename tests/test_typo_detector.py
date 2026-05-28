@@ -10,6 +10,7 @@ from ridincligun.advisory.typo_detector import TypoDetector, _levenshtein
 
 # ── _levenshtein ─────────────────────────────────────────────────
 
+
 class TestLevenshtein:
     def test_identical_strings(self):
         assert _levenshtein("abc", "abc") == 0
@@ -82,7 +83,7 @@ class TestTypoDetectorSuggest:
         assert detector.suggest("grep") is None
 
     def test_one_char_typo(self, detector):
-        result = detector.suggest("giy")   # git → distance 1
+        result = detector.suggest("giy")  # git → distance 1
         assert result == "git"
 
     def test_two_char_typo(self, detector):
@@ -123,13 +124,13 @@ class TestTypoDetectorSuggest:
 
     def test_min_length_boundary(self):
         d = TypoDetector(DICT, min_length=3)
-        assert d.suggest("gi") is None   # below min_length → no suggestion
+        assert d.suggest("gi") is None  # below min_length → no suggestion
         assert d.suggest("giy") is not None  # at or above min_length
 
     def test_max_distance_one(self):
         d = TypoDetector(DICT, max_distance=1)
-        assert d.suggest("giy") == "git"    # distance 1 — within limit
-        assert d.suggest("grpe") is None    # distance 2 — outside limit
+        assert d.suggest("giy") == "git"  # distance 1 — within limit
+        assert d.suggest("grpe") is None  # distance 2 — outside limit
 
     def test_dictionary_size_property(self):
         d = TypoDetector(DICT)
@@ -138,22 +139,27 @@ class TestTypoDetectorSuggest:
 
 # ── Integration: realistic typos ─────────────────────────────────
 
-@pytest.mark.parametrize("typo, expected", [
-    ("gti",    "git"),
-    ("grpe",   "grep"),
-    ("crul",   "curl"),
-    ("sl",     "ls"),
-    ("tsr",    "tar"),
-    # "shs" ties with both "ssh" (dist 2) and "ls" (dist 2); tie-break prefers
-    # the shorter name, so "ls" wins.  Use "sshh" (dist 1 from "ssh") instead.
-    ("sshh",   "ssh"),
-])
+
+@pytest.mark.parametrize(
+    "typo, expected",
+    [
+        ("gti", "git"),
+        ("grpe", "grep"),
+        ("crul", "curl"),
+        ("sl", "ls"),
+        ("tsr", "tar"),
+        # "shs" ties with both "ssh" (dist 2) and "ls" (dist 2); tie-break prefers
+        # the shorter name, so "ls" wins.  Use "sshh" (dist 1 from "ssh") instead.
+        ("sshh", "ssh"),
+    ],
+)
 def test_realistic_typos(typo, expected):
     d = TypoDetector(DICT)
     assert d.suggest(typo) == expected, f"{typo!r} should suggest {expected!r}"
 
 
 # ── Edge case: empty dictionary ───────────────────────────────────
+
 
 def test_empty_dictionary():
     d = TypoDetector(frozenset())

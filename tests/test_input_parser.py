@@ -27,6 +27,7 @@ def _make_screen(lines: list[str], cursor_y: int, cols: int = 80) -> pyte.Screen
 
 # ── Single-line commands ───────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "prompt_line,expected",
     [
@@ -54,6 +55,7 @@ def test_blank_line_returns_empty() -> None:
 
 
 # ── Visual line wrapping ──────────────────────────────────────────
+
 
 def test_wrapped_command_detected() -> None:
     """A command that wraps to a second line should be fully extracted."""
@@ -97,6 +99,7 @@ def test_wrapped_command_joins_without_spaces() -> None:
 
 # ── Backslash continuation ────────────────────────────────────────
 
+
 def test_backslash_continuation() -> None:
     """Commands with trailing \\ should be joined across lines."""
     lines = [
@@ -110,6 +113,7 @@ def test_backslash_continuation() -> None:
 
 
 # ── Previous output doesn't bleed in ──────────────────────────────
+
 
 def test_previous_output_not_included() -> None:
     """Output from previous commands should not be included."""

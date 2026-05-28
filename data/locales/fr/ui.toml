@@ -27,7 +27,7 @@ connected = "✓ Connecté à {provider}"
 title = "ridinCLIgun"
 tagline = "Votre compagnon shell."
 motto = "Conseille, n'agit jamais."
-help_hint = "Ctrl+G → H  afficher l'aide"
+help_hint = "F1  afficher l'aide"
 
 # ── Onboarding (first run) ──────────────────────────────────────
 
@@ -36,10 +36,10 @@ title = "Bienvenue dans ridinCLIgun"
 tagline = "Votre compagnon shell."
 motto = "Conseille, n'agit jamais."
 shortcuts_title = "Raccourcis clavier :"
-shortcut_review = "Ctrl+G, R   analyse IA"
-shortcut_help = "Ctrl+G, ?   aide commande"
+shortcut_review = "F2          analyse IA"
+shortcut_help = "F1          afficher l'aide"
 shortcut_settings = "Ctrl+G, G   paramètres"
-shortcut_all = "Ctrl+G, H   tous les raccourcis"
+shortcut_all = "Ctrl+G, H   historique"
 setup_title = "Configurer l'IA :"
 setup_hint = "Ctrl+G, G → Fournisseurs"
 setup_detail = "pour ajouter votre clé API."
@@ -56,7 +56,6 @@ leader_title = "Touche leader Ctrl+G :"
 review = "analyse IA de la commande"
 insert = "insérer la suggestion IA"
 history = "ouvrir l'historique"
-cmd_help = "afficher cmd --help"
 toggle_ai = "activer/désactiver l'IA"
 model_select = "sélection du modèle"
 settings = "paramètres"
@@ -64,7 +63,6 @@ toggle_secret = "activer/désactiver le mode secret"
 this_help = "cette aide"
 restart_shell = "redémarrer le shell"
 debug = "infos de débogage"
-quit_fallback = "quitter (alternative)"
 dismiss = "Échap pour fermer."
 
 # ── Secrets warning ─────────────────────────────────────────────
@@ -77,7 +75,7 @@ warning_line2 = "Supprimez les secrets avant de demander"
 warning_line3 = "une analyse IA."
 detected_in_command = "🔒 Secrets détectés dans la commande."
 send_anyway = "L'envoi à l'IA peut exposer vos identifiants."
-confirm_send = "Appuyez à nouveau sur Ctrl+G, R pour envoyer quand même."
+confirm_send = "Appuyez à nouveau sur F2 pour envoyer quand même."
 detected_in_clipboard = "🔒 Secrets détectés dans le presse-papiers"
 clipboard_found = "Trouvés : {kinds}"
 clipboard_confirm = "Appuyez sur V pour coller quand même,"
@@ -87,7 +85,7 @@ clipboard_cancel = "toute autre touche pour annuler."
 
 [redaction]
 title = "🔍 Aperçu de la masquage"
-confirm = "Ctrl+G, R pour confirmer et envoyer."
+confirm = "F2 pour confirmer et envoyer."
 cancel = "Toute autre touche pour annuler."
 original = "Original :"
 sent_to_ai = "Envoyé à l'IA :"
@@ -100,7 +98,7 @@ config_hint = "Désactivable dans la config [privacy]."
 title = "Analyse IA"
 loading = "🔍 Analyse en cours : {command}"
 asking = "Interrogation de {provider}..."
-insert_hint = "Ctrl+G, I pour insérer la suggestion."
+insert_hint = "F3 pour insérer la suggestion."
 
 # ── Connection error ────────────────────────────────────────────
 
@@ -118,27 +116,13 @@ local_active = "Les avertissements locaux restent actifs."
 # ── Notices (advisory pane) ─────────────────────────────────────
 
 [notice]
-ai_off = "L'IA est désactivée. Basculez avec Ctrl+G, A."
-secret_mode_on = "Le mode secret est activé — commande non envoyée.\nBasculez avec Ctrl+G, S."
+ai_off = "L'IA est désactivée. Basculez avec F4."
+secret_mode_on = "Le mode secret est activé — commande non envoyée.\nBasculez avec F5."
 no_api_key = "Aucune clé API configurée.\nAjoutez ANTHROPIC_API_KEY dans :\n~/.config/ridincligun/.env"
 no_command = "Aucune commande à analyser."
-no_suggestion = "Aucune suggestion IA disponible.\nDemandez d'abord une analyse (Ctrl+G, R)."
+no_suggestion = "Aucune suggestion IA disponible.\nDemandez d'abord une analyse (F2)."
 extract_failed = "Impossible d'extraire une commande\nde la suggestion IA."
 inserted = "Inséré : {suggestion}\n\nVérifiez avant d'appuyer sur Entrée."
-
-# ── Command help ────────────────────────────────────────────────
-
-[cmd_help]
-no_command = "Aucune commande à rechercher.\nSaisissez d'abord une commande."
-looking_up = "Recherche d'aide pour : {cmd}"
-trying = "Essai de --help, -h, man..."
-not_found = "Aucune aide trouvée pour : {cmd}\n\nEssayé --help, -h et la page man."
-invalid_name = "Nom de commande invalide : {cmd}\n\nImpossible de rechercher l'aide."
-cmd_not_found = "Commande introuvable : {cmd}\n\nVérifiez qu'elle est installée et dans le PATH."
-timeout = "Recherche d'aide expirée (5s).\n\nLa commande est peut-être interactive."
-help_failed = "Échec de la recherche d'aide : {error}"
-truncated = "... (tronqué)"
-dismiss = "Échap pour fermer."
 
 # ── Model selector ──────────────────────────────────────────────
 
@@ -186,7 +170,7 @@ off = "désactivé"
 offline = "hors ligne"
 error = "erreur"
 leader_waiting = "⌨ Ctrl+G..."
-help_hint = "Ctrl+G → aide"
+help_hint = "F1 aide"
 
 # ── Settings screen ─────────────────────────────────────────────
 

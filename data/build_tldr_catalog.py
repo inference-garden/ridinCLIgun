@@ -34,7 +34,7 @@ from pathlib import Path
 # Update this URL when upgrading.
 TLDR_ZIP_URL = "https://github.com/tldr-pages/tldr/releases/download/v2.3/tldr.zip"
 PLATFORMS = {"common", "linux", "osx"}  # page platforms to include
-MIN_EXAMPLES = 1                         # skip pages with fewer examples
+MIN_EXAMPLES = 1  # skip pages with fewer examples
 
 OUT_PATH = Path(__file__).parent / "tldr_catalog.json"
 
@@ -47,6 +47,7 @@ LOCALE_CATALOGS: dict[str, Path] = {
 
 
 # ── Parser ────────────────────────────────────────────────────────
+
 
 def _strip_placeholders(text: str) -> str:
     """Remove tldr-pages {{ }} placeholder markers and optional [ ] wrappers.
@@ -66,10 +67,10 @@ def _strip_placeholders(text: str) -> str:
     result = []
     i = 0
     while i < len(text):
-        if text[i:i+2] == "{{":
+        if text[i : i + 2] == "{{":
             end = text.find("}}", i + 2)
             if end != -1:
-                inner = text[i+2:end]
+                inner = text[i + 2 : end]
                 # Strip wrapping [ ] when the entire placeholder content is
                 # enclosed: e.g. "[-a|--all]" → "-a|--all"
                 if inner.startswith("[") and inner.endswith("]"):
@@ -110,12 +111,13 @@ def _parse_page(content: str) -> dict | None:
         return None
 
     return {
-        "desc": desc_parts[0],                  # first sentence only
+        "desc": desc_parts[0],  # first sentence only
         "examples": examples,
     }
 
 
 # ── Main ──────────────────────────────────────────────────────────
+
 
 def build() -> None:
     print(f"Downloading tldr-pages from:\n  {TLDR_ZIP_URL}", flush=True)
@@ -165,11 +167,12 @@ def build() -> None:
     def _write_catalog(catalog: dict[str, dict], out_path: Path, label: str) -> None:
         catalog = dict(sorted(catalog.items()))
         # Indented for human readability; use separators to keep it compact
-        raw_json = json.dumps(catalog, ensure_ascii=False, indent=1,
-                              separators=(",", ": "))
+        raw_json = json.dumps(catalog, ensure_ascii=False, indent=1, separators=(",", ": "))
         out_path.write_text(raw_json, encoding="utf-8")
         size_kb = out_path.stat().st_size / 1024
-        print(f"Written: {out_path}  ({size_kb:.0f} KB, {len(catalog)} {label} commands)", flush=True)
+        print(
+            f"Written: {out_path}  ({size_kb:.0f} KB, {len(catalog)} {label} commands)", flush=True
+        )
 
     en_catalog = catalog_by_dir.get("pages", {})
     print(f"Parsed {len(en_catalog)} English commands ({'+'.join(sorted(PLATFORMS))})", flush=True)

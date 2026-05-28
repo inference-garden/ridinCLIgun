@@ -13,6 +13,7 @@ from ridincligun.advisory.tldr_store import TldrExample, TldrPage, TldrStore
 
 # ── Helpers ───────────────────────────────────────────────────────
 
+
 def _write_catalog(path: Path, entries: dict) -> None:
     """Write a catalog dict as plain JSON."""
     path.write_text(json.dumps(entries), encoding="utf-8")
@@ -49,6 +50,7 @@ def store(tmp_path: Path) -> TldrStore:
 
 # ── TldrExample / TldrPage dataclasses ───────────────────────────
 
+
 def test_tldr_example_frozen():
     ex = TldrExample(description="List files", command="ls -la")
     with pytest.raises((AttributeError, TypeError)):
@@ -62,6 +64,7 @@ def test_tldr_page_frozen():
 
 
 # ── TldrStore.lookup ──────────────────────────────────────────────
+
 
 def test_lookup_known_command(store):
     page = store.lookup("tar")
@@ -90,6 +93,7 @@ def test_lookup_empty_string_returns_none(store):
 
 # ── TldrStore.known_commands ──────────────────────────────────────
 
+
 def test_known_commands_returns_frozenset(store):
     known = store.known_commands()
     assert isinstance(known, frozenset)
@@ -108,11 +112,13 @@ def test_known_commands_does_not_contain_unknown(store):
 
 # ── TldrStore.size ────────────────────────────────────────────────
 
+
 def test_size_matches_catalog(store):
     assert store.size() == 3
 
 
 # ── Examples ─────────────────────────────────────────────────────
+
 
 def test_examples_are_tldr_example_objects(store):
     page = store.lookup("tar")
@@ -132,6 +138,7 @@ def test_command_with_no_examples(store):
 
 # ── Lazy loading (cached) ─────────────────────────────────────────
 
+
 def test_lazy_loading_caches_result(store):
     """Second call should return the same dict object (cached)."""
     _ = store.lookup("tar")
@@ -142,6 +149,7 @@ def test_lazy_loading_caches_result(store):
 
 
 # ── Placeholder stripping (done at build time) ────────────────────
+
 
 def test_no_double_braces_in_real_catalog():
     """Verify build script stripped {{ }} — no raw placeholder markers in catalog."""
@@ -161,6 +169,7 @@ def test_no_double_braces_in_real_catalog():
 
 
 # ── Real catalog (bundled data) ───────────────────────────────────
+
 
 def test_real_catalog_loads():
     """Smoke test: the bundled tldr_catalog.json loads without error.
@@ -185,6 +194,7 @@ def test_real_catalog_known_commands_is_frozenset():
 
 
 # ── Locale-aware lookup ───────────────────────────────────────────
+
 
 def test_locale_lookup_falls_back_to_english(tmp_path):
     """When no locale overlay exists, lookup() returns English page."""

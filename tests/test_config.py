@@ -4,7 +4,6 @@
 
 """Tests for configuration loading."""
 
-
 import pytest
 
 from ridincligun.config import Config, load_config, save_provider_config, save_split_ratio
@@ -38,16 +37,16 @@ def test_config_reads_toml(tmp_config_dir):
     """Config reads values from config.toml."""
     tmp_config_dir.mkdir(parents=True, exist_ok=True)
     (tmp_config_dir / "config.toml").write_text(
-        '[general]\n'
-        'ai_enabled_default = true\n'
-        '\n'
-        '[provider]\n'
+        "[general]\n"
+        "ai_enabled_default = true\n"
+        "\n"
+        "[provider]\n"
         'kind = "anthropic"\n'
         'model = "claude-haiku-3"\n'
-        'timeout_seconds = 5.0\n'
-        '\n'
-        '[ui]\n'
-        'split_ratio = [2, 3]\n'
+        "timeout_seconds = 5.0\n"
+        "\n"
+        "[ui]\n"
+        "split_ratio = [2, 3]\n"
     )
     (tmp_config_dir / ".env").write_text("")
 
@@ -62,10 +61,7 @@ def test_config_reads_toml(tmp_config_dir):
 def test_config_reads_shell(tmp_config_dir):
     """Config reads shell override from config.toml."""
     tmp_config_dir.mkdir(parents=True, exist_ok=True)
-    (tmp_config_dir / "config.toml").write_text(
-        '[general]\n'
-        'shell = "/bin/bash"\n'
-    )
+    (tmp_config_dir / "config.toml").write_text('[general]\nshell = "/bin/bash"\n')
     (tmp_config_dir / ".env").write_text("")
 
     config = load_config(config_dir=tmp_config_dir)
@@ -81,6 +77,7 @@ def test_config_shell_default_empty(tmp_config_dir):
 def test_config_env_permissions(tmp_config_dir):
     """Newly created .env file has 0600 permissions."""
     import stat
+
     load_config(config_dir=tmp_config_dir)
     env_file = tmp_config_dir / ".env"
     mode = env_file.stat().st_mode
@@ -189,8 +186,7 @@ def test_load_config_mistral_does_not_load_anthropic_key(tmp_config_dir):
     tmp_config_dir.mkdir(parents=True, exist_ok=True)
     _write_provider_toml(tmp_config_dir, "mistral", "mistral-small-latest")
     (tmp_config_dir / ".env").write_text(
-        "ANTHROPIC_API_KEY=sk-ant-secret\n"
-        "MISTRAL_API_KEY=\n"  # empty
+        "ANTHROPIC_API_KEY=sk-ant-secret\nMISTRAL_API_KEY=\n"  # empty
     )
 
     config = load_config(config_dir=tmp_config_dir)
@@ -204,8 +200,7 @@ def test_provider_switch_survives_restart(tmp_config_dir):
     tmp_config_dir.mkdir(parents=True, exist_ok=True)
     _write_provider_toml(tmp_config_dir, "anthropic", "claude-sonnet-4-20250514")
     (tmp_config_dir / ".env").write_text(
-        "ANTHROPIC_API_KEY=sk-ant-old\n"
-        "OPENAI_API_KEY=sk-openai-new\n"
+        "ANTHROPIC_API_KEY=sk-ant-old\nOPENAI_API_KEY=sk-openai-new\n"
     )
 
     config = load_config(config_dir=tmp_config_dir)

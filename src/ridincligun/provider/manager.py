@@ -63,7 +63,10 @@ class ProviderManager:
         return self._adapter.is_configured
 
     async def review(
-        self, command: str, context: str = "", system_prompt: str = "",
+        self,
+        command: str,
+        context: str = "",
+        system_prompt: str = "",
     ) -> ReviewStatus:
         """Request an AI review with timeout and error handling.
 

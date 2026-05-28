@@ -16,8 +16,9 @@ import re
 from ridincligun.provider.base import AIReviewResponse, ProviderAdapter, ProviderError
 from ridincligun.provider.prompt import SYSTEM_PROMPT, build_review_prompt
 
-# Default model — fast, cheap, good enough for command review
-_DEFAULT_MODEL = "claude-sonnet-4-20250514"
+# Default model — best balance of speed and intelligence (current as of 2026-05)
+# claude-sonnet-4-20250514 is deprecated and retires 2026-06-15; do not restore.
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 _MAX_TOKENS = 512
 
 
