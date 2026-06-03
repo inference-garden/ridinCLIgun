@@ -137,6 +137,7 @@ Useful controls:
 - `F4` — toggle AI on/off
 - `Ctrl+G, M` — switch provider/model
 - `Ctrl+G, G` — open settings
+- `Ctrl+G, C` / `Ctrl+G, V` — copy selection / paste (scanned for secrets first)
 
 ## Shortcuts
 
@@ -154,14 +155,16 @@ Frequent actions live on function keys. Modal actions use `Ctrl+G` as a leader k
 | `Ctrl+G, H` | Open review history |
 | `Ctrl+G, M` | Switch provider/model |
 | `Ctrl+G, G` | Open settings |
+| `Ctrl+G, C` | Copy the current selection to the clipboard |
+| `Ctrl+G, V` | Paste — scanned for secrets, with confirmation before it reaches the shell |
 | `Ctrl+G, X` | Restart shell |
 | `Ctrl+G, Q` | Quit |
 
 ## Status
 
-**v0.4** — current line. macOS, Python 3.12+.
+**v0.4.4** — current line. macOS, Python 3.12+.
 
-The next steps in the v0.4.x line are about packaging, distribution, and polish rather than a new product direction.
+The next step in the v0.4.x line is Homebrew packaging, then polish and Linux support — not a new product direction.
 
 ## Config
 
