@@ -6,6 +6,8 @@
 
 import asyncio
 
+import pytest
+
 from ridincligun.provider.manager import ProviderManager
 from ridincligun.provider.mistral import MistralAdapter, _parse_response
 
@@ -14,6 +16,39 @@ def test_mistral_adapter_not_configured():
     """Mistral adapter without API key reports not configured."""
     adapter = MistralAdapter(api_key="")
     assert not adapter.is_configured
+
+
+def test_mistral_missing_sdk_raises_setup_error(monkeypatch):
+    """A missing mistralai SDK surfaces an actionable install hint.
+
+    The adapter imports `from mistralai.client import Mistral` — the location the
+    pinned mistralai 2.x exposes the client (the top-level `mistralai` is a
+    namespace package). With the package absent, that import must fail cleanly
+    into a ProviderSetupError, not be re-wrapped as a generic API failure.
+    """
+    import sys
+
+    from ridincligun.provider.base import ProviderSetupError
+
+    monkeypatch.setitem(sys.modules, "mistralai", None)
+    adapter = MistralAdapter(api_key="test-key")
+    with pytest.raises(ProviderSetupError) as exc:
+        asyncio.run(adapter.review_command("ls"))
+    msg = str(exc.value)
+    assert "pip install" in msg
+    assert "API call failed" not in msg
+
+
+def test_mistral_real_client_constructs_when_sdk_present():
+    """When mistralai is installed, the adapter's import path must actually resolve.
+
+    Regression guard for the exact bug that slipped in: `Mistral` lives under
+    `mistralai.client` in the pinned 2.x (top-level `mistralai` is an empty
+    namespace package), so `from mistralai import Mistral` would wrongly fail.
+    """
+    pytest.importorskip("mistralai")
+    adapter = MistralAdapter(api_key="test-key")
+    assert adapter._get_client() is not None  # raises ProviderSetupError if path wrong
 
 
 def test_mistral_adapter_configured():

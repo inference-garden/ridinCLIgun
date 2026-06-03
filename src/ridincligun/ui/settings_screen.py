@@ -57,8 +57,8 @@ def _read_env_keys(env_file: Path) -> dict[str, str]:
             v = vals.get(env_var, "") or ""
             if v:
                 keys[env_var] = v
-    except Exception:  # nosec B110 — intentional fail-closed (see below)
-        # Fail closed on ANY read/parse error: return no keys rather than
+    except Exception:
+        # Intentional fail-closed on ANY read/parse error: return no keys rather than
         # propagate. Missing keys disable AI (safe direction); they are never
         # leaked. Broad except is deliberate so a malformed .env cannot crash
         # the settings screen or surface partial/raw key state. (audit T07)

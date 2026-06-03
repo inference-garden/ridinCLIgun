@@ -13,7 +13,13 @@ from __future__ import annotations
 import os
 import re
 
-from ridincligun.provider.base import AIReviewResponse, ProviderAdapter, ProviderError
+from ridincligun.provider.base import (
+    AIReviewResponse,
+    ProviderAdapter,
+    ProviderError,
+    ProviderRateLimitError,
+    ProviderSetupError,
+)
 from ridincligun.provider.prompt import SYSTEM_PROMPT, build_review_prompt
 
 # Default model — best balance of speed and intelligence (current as of 2026-05)
@@ -48,9 +54,9 @@ class AnthropicAdapter(ProviderAdapter):
             try:
                 import anthropic
             except ImportError as e:
-                raise ProviderError(
-                    "anthropic package not installed. Run: pip install anthropic",
-                    retriable=False,
+                raise ProviderSetupError(
+                    "Anthropic SDK not installed. "
+                    'Run: pip install "ridincligun[anthropic]" (or: pip install anthropic)'
                 ) from e
             self._client = anthropic.Anthropic(api_key=self._api_key)
         return self._client
@@ -63,16 +69,19 @@ class AnthropicAdapter(ProviderAdapter):
     ) -> AIReviewResponse:
         """Send a command to Claude for review."""
         if not self.is_configured:
-            raise ProviderError(
-                "ANTHROPIC_API_KEY not set. Add it to ~/.config/ridincligun/.env",
-                retriable=False,
+            raise ProviderSetupError(
+                "ANTHROPIC_API_KEY not set. Add it to ~/.config/ridincligun/.env"
             )
 
         user_message = build_review_prompt(command, context)
         effective_prompt = system_prompt or SYSTEM_PROMPT
 
+        # Resolve the client first. A missing SDK raises ProviderSetupError, which
+        # must propagate as-is — it must NOT be caught below and re-wrapped into a
+        # generic "API call failed" (that masking is what hid this from diagnosis).
+        client = self._get_client()
+
         try:
-            client = self._get_client()
             # Use sync client in a thread to avoid blocking the event loop
             import asyncio
 
@@ -89,7 +98,7 @@ class AnthropicAdapter(ProviderAdapter):
             if "authentication" in error_msg.lower() or "api key" in error_msg.lower():
                 raise ProviderError(f"Authentication failed: {error_msg}", retriable=False) from e
             if "rate" in error_msg.lower() and "limit" in error_msg.lower():
-                raise ProviderError(f"Rate limited: {error_msg}", retriable=True) from e
+                raise ProviderRateLimitError(f"Rate limited: {error_msg}") from e
             if "content filtering" in error_msg.lower() or "blocked" in error_msg.lower():
                 raise ProviderError(
                     "Response blocked by Anthropic content filter. "

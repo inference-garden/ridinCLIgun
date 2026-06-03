@@ -35,6 +35,8 @@ def test_leader_resolve_all_keys():
         "m": LeaderAction.MODEL_SELECT,
         "h": LeaderAction.HISTORY,
         "g": LeaderAction.SETTINGS,
+        "c": LeaderAction.COPY,
+        "v": LeaderAction.PASTE,
     }
     for key, expected_action in expected.items():
         leader = LeaderState()

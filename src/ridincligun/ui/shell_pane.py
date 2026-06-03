@@ -21,6 +21,7 @@ from textual.message import Message
 from textual.strip import Strip
 from textual.widget import Widget
 
+from ridincligun.i18n import t
 from ridincligun.shell.input_parser import extract_current_command
 from ridincligun.shell.pty_process import PtyProcess
 
@@ -331,7 +332,7 @@ class ShellPane(Widget, can_focus=True):
                 self.app._do_paste()  # confirms pending paste
             else:
                 self.app._pending_paste_text = None
-                self.app._toast("Paste cancelled.")
+                self.app._toast(t("toast.paste_cancelled"))
                 self.app._show_advisory_welcome()
             event.stop()
             return

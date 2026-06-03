@@ -112,6 +112,13 @@ _LANGUAGE_NAMES: dict[str, str] = {
     "en": "English",
 }
 
+# A directive written *in the target language itself* — a much stronger signal
+# for weaker models (Mistral Small, Claude Haiku) than an English meta-instruction.
+_LOCALE_NATIVE_DIRECTIVE: dict[str, str] = {
+    "de": "Schreibe deine gesamte Antwort (SUMMARY, EXPLANATION, SUGGESTION) auf Deutsch.",
+    "fr": "Rédige toute ta réponse (SUMMARY, EXPLANATION, SUGGESTION) en français.",
+}
+
 
 def build_locale_context(locale: str) -> str:
     """Return a locale enforcement instruction for the AI user message.
@@ -126,11 +133,13 @@ def build_locale_context(locale: str) -> str:
     if not locale or locale == "en":
         return ""
     lang_name = _LANGUAGE_NAMES.get(locale, locale)
-    return (
+    native = _LOCALE_NATIVE_DIRECTIVE.get(locale, "")
+    instruction = (
         f"IMPORTANT: You MUST write all response content "
         f"(SUMMARY, EXPLANATION, SUGGESTION) in {lang_name} only. "
         f"Do not use English in those fields."
     )
+    return f"{instruction} {native}".strip() if native else instruction
 
 
 def build_system_prompt(
@@ -164,14 +173,20 @@ def build_system_prompt(
     if mode_supplement:
         parts.append(f"\nTone and audience:\n{mode_supplement}")
 
-    # Language instruction — AI responds in user's language
+    # Language instruction — AI responds in user's language. Placed LAST so it's
+    # the most recent thing the model reads (recency helps weaker models honour it),
+    # and reinforced with a directive in the target language itself.
     if locale and locale != "en":
         lang_name = _LANGUAGE_NAMES.get(locale, locale)
-        parts.append(
+        native = _LOCALE_NATIVE_DIRECTIVE.get(locale, "")
+        lang_line = (
             f"\nIMPORTANT: Write all SUMMARY, EXPLANATION, and SUGGESTION content "
             f"in {lang_name}. Keep the response format headers "
             f"(RISK, SUMMARY, EXPLANATION, SUGGESTION) in English."
         )
+        if native:
+            lang_line += f"\n{native}"
+        parts.append(lang_line)
 
     return "\n".join(parts)
 

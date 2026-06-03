@@ -15,7 +15,13 @@ import logging
 import sys
 from dataclasses import dataclass
 
-from ridincligun.provider.base import AIReviewResponse, ProviderAdapter, ProviderError
+from ridincligun.provider.base import (
+    AIReviewResponse,
+    ProviderAdapter,
+    ProviderError,
+    ProviderRateLimitError,
+    ProviderSetupError,
+)
 
 # Debug logger — writes to stderr, never to advisory pane or history
 _log = logging.getLogger(__name__)
@@ -93,6 +99,26 @@ class ProviderManager:
             return ReviewStatus(
                 success=False,
                 error_message=f"Review timed out after {self._timeout:.0f}s.",
+                provider_name=self._adapter.name,
+            )
+        except ProviderRateLimitError as e:
+            # Rate limit (429) is transient — tell the user to retry rather than
+            # masking it as a connection problem. Clean static message: the raw
+            # API body (logged below) is never shown.
+            _log.warning("Provider rate-limited during review: %s", e)
+            return ReviewStatus(
+                success=False,
+                error_message="Rate limited by the provider — wait a moment and try again.",
+                provider_name=self._adapter.name,
+            )
+        except ProviderSetupError as e:
+            # Local setup gap (SDK not installed, key not configured). The message
+            # is a vetted, secret-free, actionable string — show it verbatim so the
+            # user can actually fix it, instead of masking it as a connection error.
+            _log.warning("Provider setup error during review: %s", e)
+            return ReviewStatus(
+                success=False,
+                error_message=str(e),
                 provider_name=self._adapter.name,
             )
         except ProviderError as e:

@@ -31,7 +31,7 @@ class ProviderSettings:
     """Settings for a specific AI provider."""
 
     kind: str = "anthropic"
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-6"
     timeout_seconds: float = 15.0
     max_tokens: int = 1024
 
@@ -114,8 +114,8 @@ def _ensure_config_dir(config_dir: Path) -> None:
             '# shell = "/bin/zsh"  # override default shell\n'
             "\n"
             "[provider]\n"
-            'kind = "anthropic"  # "anthropic" or "openai"\n'
-            'model = "claude-sonnet-4-20250514"\n'
+            'kind = "anthropic"  # "anthropic", "openai", or "mistral"\n'
+            'model = "claude-sonnet-4-6"\n'
             "timeout_seconds = 10.0\n"
             "max_tokens = 1024\n"
             "\n"

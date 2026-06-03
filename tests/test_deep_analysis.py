@@ -4,16 +4,22 @@
 
 """Tests for the deep analysis module (URL extraction, trigger detection, fetch)."""
 
-import urllib.request
+import ipaddress
+import socket
+import urllib.error
 
 import pytest
 
+import ridincligun.provider.deep_analysis as da
 from ridincligun.provider.deep_analysis import (
     _FETCH_TIMEOUT,
     _MAX_SCRIPT_SIZE,
     DEEP_ANALYSIS_SYSTEM,
     FetchResult,
+    _check_url,
     _get_context_limit,
+    _GuardedRedirectHandler,
+    _ip_is_blocked,
     build_deep_analysis_prompt,
     check_deep_analysis_trigger,
     fetch_script,
@@ -161,6 +167,26 @@ def test_context_limit_unknown_model_uses_default() -> None:
     assert limit == 30_000
 
 
+def test_context_limit_gpt41_does_not_collide_with_gpt4() -> None:
+    """Regression (#2b): `gpt-4.1-mini` must NOT match the 8K `gpt-4` entry.
+
+    Longest-prefix matching means the specific `gpt-4.1` family wins. The bug made
+    a 108 KB script wrongly "too large" because gpt-4.1-mini resolved to 6K tokens.
+    """
+    assert _get_context_limit("gpt-4.1-mini") == 250_000
+    assert _get_context_limit("gpt-5.4-mini") == 250_000
+    assert _get_context_limit("gpt-5.4") == 250_000
+    assert _get_context_limit("gpt-4o-mini") == 124_000
+    assert _get_context_limit("gpt-4") == 6_000  # bare legacy GPT-4 still 8K-class
+
+
+def test_context_limit_gpt41_fits_a_large_script() -> None:
+    """The collision previously truncated a ~108 KB script on gpt-4.1-mini."""
+    script = "x" * 108_144
+    _content, truncated = fit_script_to_context(script, "gpt-4.1-mini")
+    assert not truncated
+
+
 def test_context_limit_empty_model_uses_default() -> None:
     limit = _get_context_limit("")
     assert limit == 30_000
@@ -195,15 +221,16 @@ def test_fit_script_model_aware_limit() -> None:
     assert trunc_default  # Doesn't fit in default/small model
 
 
-# ── fetch_script security boundary (audit T04, networkless) ───────
+# ── fetch_script security boundary — B-S09 (networkless) ──────────
 
 
 class _FakeResp:
     """Minimal stand-in for the urlopen context manager."""
 
-    def __init__(self, data: bytes, content_type: str = "text/plain") -> None:
+    def __init__(self, data: bytes, url: str = "https://example.com/x") -> None:
         self._data = data
-        self.headers = {"Content-Type": content_type}
+        self._url = url
+        self.headers = {"Content-Type": "text/plain"}
 
     def __enter__(self):
         return self
@@ -214,43 +241,167 @@ class _FakeResp:
     def read(self, n: int) -> bytes:
         return self._data[:n]
 
+    def geturl(self) -> str:
+        return self._url
 
-@pytest.mark.asyncio
+
+def _patch_resolver(monkeypatch, ip: str) -> None:
+    """Make every DNS lookup resolve to a single fixed IP."""
+
+    def _fake(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _fake)
+
+
+def _ban_network(monkeypatch) -> None:
+    """Fail loudly if anything tries to resolve or open a connection."""
+
+    def _no_dns(*args, **kwargs):
+        raise AssertionError("network must not be touched")
+
+    monkeypatch.setattr(socket, "getaddrinfo", _no_dns)
+    monkeypatch.setattr(da, "_http_get", _no_dns)
+
+
+# ── SSRF guard: IP classification ─────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "ip",
+    [
+        "127.0.0.1",  # loopback
+        "10.0.0.5",  # private
+        "172.16.5.4",  # private
+        "192.168.1.1",  # private
+        "169.254.169.254",  # AWS/GCP cloud metadata
+        "0.0.0.0",  # unspecified
+        "::1",  # IPv6 loopback
+        "fe80::1",  # IPv6 link-local
+        "fc00::1",  # IPv6 unique-local
+        "::ffff:169.254.169.254",  # IPv4-mapped IPv6 metadata
+        "::ffff:127.0.0.1",  # IPv4-mapped IPv6 loopback
+    ],
+)
+def test_ip_is_blocked_rejects_internal(ip) -> None:
+    assert _ip_is_blocked(ipaddress.ip_address(ip)) is True
+
+
+@pytest.mark.parametrize("ip", ["93.184.216.34", "8.8.8.8", "2606:2800:220:1::1"])
+def test_ip_is_blocked_allows_public(ip) -> None:
+    assert _ip_is_blocked(ipaddress.ip_address(ip)) is False
+
+
+# ── _check_url: scheme + SSRF ─────────────────────────────────────
+
+
+def test_check_url_rejects_http() -> None:
+    assert _check_url("http://example.com/install.sh") == "Only HTTPS URLs are allowed"
+
+
+@pytest.mark.parametrize("url", ["ftp://h/x", "file:///etc/passwd", "data:,hi", "//h/x"])
+def test_check_url_rejects_non_https_schemes(url) -> None:
+    assert _check_url(url) == "Only HTTPS URLs are allowed"
+
+
 @pytest.mark.parametrize(
     "url",
     [
-        "file:///etc/passwd",
-        "ftp://host/payload.sh",
-        "gopher://host/x",
-        "data:text/plain,echo hi",
-        "//host/relative",
+        "https://127.0.0.1/x",
+        "https://169.254.169.254/latest/meta-data/",
+        "https://[::1]/x",
+        "https://192.168.0.1/x",
     ],
 )
-async def test_fetch_script_rejects_non_http_schemes(url, monkeypatch):
-    """Only http/https may be fetched; rejected schemes must not touch the network."""
+def test_check_url_blocks_internal_ip_literals(url) -> None:
+    # IP literals are validated directly — no DNS needed.
+    assert _check_url(url) == da._BLOCK_MSG
 
-    def _no_network(*args, **kwargs):
-        raise AssertionError(f"network must not be touched for {url!r}")
 
-    monkeypatch.setattr(urllib.request, "urlopen", _no_network)
+def test_check_url_blocks_hostname_resolving_internal(monkeypatch) -> None:
+    _patch_resolver(monkeypatch, "10.0.0.5")
+    assert _check_url("https://intranet.example/x") == da._BLOCK_MSG
 
-    result = await fetch_script(url)
 
+def test_check_url_allows_public_host(monkeypatch) -> None:
+    _patch_resolver(monkeypatch, "93.184.216.34")
+    assert _check_url("https://example.com/install.sh") is None
+
+
+# ── Redirect revalidation ─────────────────────────────────────────
+
+
+def test_guarded_redirect_blocks_internal_target() -> None:
+    """A redirect to an internal/metadata host must raise, not be followed."""
+    handler = _GuardedRedirectHandler()
+    with pytest.raises(urllib.error.URLError):
+        handler.redirect_request(None, None, 302, "Found", {}, "https://169.254.169.254/latest/")
+
+
+def test_guarded_redirect_blocks_http_downgrade() -> None:
+    handler = _GuardedRedirectHandler()
+    with pytest.raises(urllib.error.URLError):
+        handler.redirect_request(None, None, 302, "Found", {}, "http://example.com/x")
+
+
+# ── fetch_script integration (networkless) ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_fetch_script_rejects_http(monkeypatch):
+    """http:// is rejected up front — no DNS, no connection."""
+    _ban_network(monkeypatch)
+    result = await fetch_script("http://example.com/install.sh")
     assert not result.success
-    assert "HTTP" in result.error
+    assert "HTTPS" in result.error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url", ["https://127.0.0.1/x", "https://169.254.169.254/x"])
+async def test_fetch_script_blocks_internal_ip_literal(url, monkeypatch):
+    """An internal IP literal is refused before any network activity."""
+    _ban_network(monkeypatch)
+    result = await fetch_script(url)
+    assert not result.success
+    assert result.error == da._BLOCK_MSG
+
+
+@pytest.mark.asyncio
+async def test_fetch_script_blocks_hostname_resolving_internal(monkeypatch):
+    """A public-looking hostname that resolves to a private IP is refused."""
+    _patch_resolver(monkeypatch, "10.0.0.5")
+    monkeypatch.setattr(da, "_http_get", lambda *a, **k: pytest.fail("must not fetch"))
+    result = await fetch_script("https://intranet.example/x")
+    assert not result.success
+    assert result.error == da._BLOCK_MSG
+
+
+@pytest.mark.asyncio
+async def test_fetch_script_blocked_redirect_surfaces_error(monkeypatch):
+    """A blocked-redirect URLError from the opener becomes a clean fetch failure."""
+    _patch_resolver(monkeypatch, "93.184.216.34")
+
+    def _raise(req, timeout):
+        raise urllib.error.URLError("blocked redirect to 'https://127.0.0.1/x': refused")
+
+    monkeypatch.setattr(da, "_http_get", _raise)
+    result = await fetch_script("https://example.com/install.sh")
+    assert not result.success
+    assert "blocked redirect" in result.error
 
 
 @pytest.mark.asyncio
 async def test_fetch_script_uses_timeout_and_returns_content(monkeypatch):
-    """A valid https fetch passes the configured timeout and returns decoded content."""
+    """A valid https fetch (public IP) passes the timeout and returns decoded content."""
+    _patch_resolver(monkeypatch, "93.184.216.34")
     captured: dict[str, object] = {}
 
-    def fake_urlopen(req, timeout=None):
+    def fake_get(req, timeout):
         captured["timeout"] = timeout
         captured["url"] = req.full_url
-        return _FakeResp(b"echo hello")
+        return _FakeResp(b"echo hello", url="https://example.com/install.sh")
 
-    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(da, "_http_get", fake_get)
 
     result = await fetch_script("https://example.com/install.sh")
 
@@ -264,8 +415,9 @@ async def test_fetch_script_uses_timeout_and_returns_content(monkeypatch):
 @pytest.mark.asyncio
 async def test_fetch_script_enforces_size_cap(monkeypatch):
     """Oversized responses are truncated to the cap, not pulled in unbounded."""
+    _patch_resolver(monkeypatch, "93.184.216.34")
     big = b"a" * (_MAX_SCRIPT_SIZE + 500)
-    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=None: _FakeResp(big))
+    monkeypatch.setattr(da, "_http_get", lambda req, timeout: _FakeResp(big))
 
     result = await fetch_script("https://example.com/big.sh")
 

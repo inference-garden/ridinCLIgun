@@ -267,6 +267,120 @@ def test_manager_sanitizes_unexpected_error():
     assert "failed" in result.error_message.lower()
 
 
+# ── Setup-error surfacing (S1 root-cause regression guard) ───────
+#
+# Root cause of "all three providers fail identically": the optional AI SDKs
+# were not installed, so each adapter raised on `import`, and the manager masked
+# every ProviderError as a generic "check connection" message. These tests pin
+# the fix: a setup gap (missing SDK / missing key) must reach the user verbatim,
+# while genuine runtime errors stay sanitized.
+
+
+def test_manager_surfaces_setup_error_verbatim():
+    """ProviderSetupError must reach the user as-is, NOT masked as a connection error."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ridincligun.provider.base import ProviderSetupError
+
+    mock_adapter = MagicMock()
+    mock_adapter.is_configured = True
+    mock_adapter.name = "mock"
+    mock_adapter.review_command = AsyncMock(
+        side_effect=ProviderSetupError(
+            'Mistral SDK not installed. Run: pip install "ridincligun[mistral]"'
+        )
+    )
+    manager = ProviderManager(mock_adapter)
+    result = asyncio.run(manager.review("ls"))
+    assert not result.success
+    assert "not installed" in result.error_message
+    assert "pip install" in result.error_message
+    # The whole point: it is NOT the generic connection message.
+    assert "check connection" not in result.error_message.lower()
+
+
+def test_setup_error_is_a_provider_error():
+    """ProviderSetupError is a ProviderError so existing handlers still catch it."""
+    from ridincligun.provider.base import ProviderError, ProviderSetupError
+
+    err = ProviderSetupError("SDK not installed")
+    assert isinstance(err, ProviderError)
+    assert err.retriable is False  # retrying never fixes a setup gap
+
+
+def test_anthropic_missing_sdk_raises_setup_error(monkeypatch):
+    """A missing anthropic SDK surfaces an actionable install hint, not a generic
+    failure — and it must NOT be re-wrapped by the adapter's API-error handler."""
+    import sys
+
+    from ridincligun.provider.base import ProviderSetupError
+
+    # Force `import anthropic` to fail even if the package happens to be installed.
+    monkeypatch.setitem(sys.modules, "anthropic", None)
+    adapter = AnthropicAdapter(api_key="sk-ant-test")
+    with pytest.raises(ProviderSetupError) as exc:
+        asyncio.run(adapter.review_command("ls"))
+    msg = str(exc.value)
+    assert "pip install" in msg
+    assert "API call failed" not in msg  # not swallowed + re-wrapped
+
+
+def test_manager_surfaces_rate_limit_as_retry_message():
+    """A 429 is transient — the user should be told to retry, NOT shown the generic
+    "check connection", and the raw API body must not leak."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ridincligun.provider.base import ProviderRateLimitError
+
+    mock_adapter = MagicMock()
+    mock_adapter.is_configured = True
+    mock_adapter.name = "mock"
+    mock_adapter.review_command = AsyncMock(
+        side_effect=ProviderRateLimitError('Rate limited: Status 429 {"code":"1300"}')
+    )
+    manager = ProviderManager(mock_adapter)
+    result = asyncio.run(manager.review("ls"))
+    assert not result.success
+    assert "rate limited" in result.error_message.lower()
+    assert "try again" in result.error_message.lower()
+    assert "check connection" not in result.error_message.lower()
+    assert "1300" not in result.error_message  # raw body never leaks
+    assert "429" not in result.error_message
+
+
+def test_rate_limit_error_is_a_provider_error_and_retriable():
+    from ridincligun.provider.base import ProviderError, ProviderRateLimitError
+
+    err = ProviderRateLimitError("Rate limited")
+    assert isinstance(err, ProviderError)
+    assert err.retriable is True  # retrying a 429 can succeed
+
+
+def test_anthropic_429_raises_rate_limit_error():
+    """A rate-limit error from the SDK becomes a ProviderRateLimitError, not a
+    generic API failure (so the manager can surface a retry message)."""
+    from unittest.mock import MagicMock
+
+    from ridincligun.provider.base import ProviderRateLimitError
+
+    adapter = AnthropicAdapter(api_key="sk-ant-test")
+    fake_client = MagicMock()
+    fake_client.messages.create.side_effect = RuntimeError("429 rate limit exceeded")
+    adapter._client = fake_client  # bypass real SDK construction
+
+    with pytest.raises(ProviderRateLimitError):
+        asyncio.run(adapter.review_command("ls"))
+
+
+def test_anthropic_real_client_constructs_when_sdk_present():
+    """When the anthropic SDK is installed, the adapter's import path must actually
+    resolve. Guards against importing the client from the wrong location for the
+    pinned SDK (the class of bug that briefly slipped into the Mistral adapter)."""
+    pytest.importorskip("anthropic")
+    adapter = AnthropicAdapter(api_key="sk-ant-test")
+    assert adapter._get_client() is not None  # raises ProviderSetupError if path wrong
+
+
 # ── OpenAI adapter tests ─────────────────────────────────────────
 
 from ridincligun.provider.openai import OpenAIAdapter  # noqa: E402
@@ -277,6 +391,13 @@ def test_openai_adapter_not_configured():
     """OpenAI adapter without API key reports not configured."""
     adapter = OpenAIAdapter(api_key="")
     assert not adapter.is_configured
+
+
+def test_openai_real_client_constructs_when_sdk_present():
+    """When the openai SDK is installed, the adapter's import path must resolve."""
+    pytest.importorskip("openai")
+    adapter = OpenAIAdapter(api_key="x")
+    assert adapter._get_client() is not None
 
 
 def test_openai_adapter_configured():
@@ -293,9 +414,35 @@ def test_openai_adapter_name():
 
 
 def test_openai_adapter_default_model():
-    """OpenAI adapter uses gpt-4.1-mini by default."""
+    """OpenAI adapter defaults to gpt-5.4-mini (kept in sync with the selector)."""
     adapter = OpenAIAdapter(api_key="sk-test")
-    assert "gpt-4.1-mini" in adapter.name
+    assert "gpt-5.4-mini" in adapter.name
+
+
+def test_openai_uses_max_completion_tokens_not_max_tokens():
+    """Contract: the OpenAI adapter must send `max_completion_tokens`, never the
+    legacy `max_tokens` — GPT-5 / o-series models reject `max_tokens` with a 400,
+    which is exactly what broke the OpenAI provider on the gpt-5.x presets."""
+    from unittest.mock import MagicMock
+
+    adapter = OpenAIAdapter(api_key="sk-test", model="gpt-5.4-mini")
+
+    captured: dict = {}
+
+    def _fake_create(**kwargs):
+        captured.update(kwargs)
+        resp = MagicMock()
+        resp.choices = [MagicMock(message=MagicMock(content="RISK: safe\nSUMMARY: ok"))]
+        resp.usage = MagicMock(prompt_tokens=1, completion_tokens=1)
+        return resp
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create = _fake_create
+    adapter._client = fake_client  # bypass real SDK construction
+
+    asyncio.run(adapter.review_command("ls"))
+    assert "max_completion_tokens" in captured
+    assert "max_tokens" not in captured
 
 
 def test_openai_parse_response_full():

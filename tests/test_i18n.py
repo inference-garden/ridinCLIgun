@@ -167,3 +167,18 @@ class TestPromptLocale:
 
         prompt = build_deep_analysis_prompt("http://example.com", "echo hello", locale="en")
         assert "IMPORTANT: Write all" not in prompt
+
+    def test_locale_context_reinforces_in_target_language(self):
+        """The locale context carries a directive in the target language itself
+        (stronger signal for weak models than an English-only meta-instruction)."""
+        from ridincligun.provider.prompt import build_locale_context
+
+        assert "Deutsch" in build_locale_context("de")
+        assert "français" in build_locale_context("fr")
+        assert build_locale_context("en") == ""
+
+    def test_system_prompt_reinforces_in_target_language(self):
+        from ridincligun.provider.prompt import build_system_prompt
+
+        assert "Deutsch" in build_system_prompt(locale="de")
+        assert "français" in build_system_prompt(locale="fr")

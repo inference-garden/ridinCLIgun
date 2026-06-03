@@ -71,3 +71,33 @@ class ProviderError(Exception):
     def __init__(self, message: str, retriable: bool = False) -> None:
         super().__init__(message)
         self.retriable = retriable
+
+
+class ProviderSetupError(ProviderError):
+    """Raised when the provider can't run due to a local setup gap the user must fix.
+
+    Covers conditions like "the optional SDK package isn't installed" or
+    "no API key configured" — things the user resolves on their own machine.
+
+    Unlike a generic ``ProviderError`` (whose message may embed raw SDK/network
+    detail and is therefore sanitized before display), the message here is a
+    static, self-authored, secret-free, actionable string and is SAFE to show
+    verbatim in the UI. Adapters must only raise this with such messages.
+    """
+
+    def __init__(self, message: str) -> None:
+        # Setup gaps are never fixed by retrying the same call.
+        super().__init__(message, retriable=False)
+
+
+class ProviderRateLimitError(ProviderError):
+    """Raised when the provider rate-limits the request (HTTP 429).
+
+    A transient, retriable condition. The manager surfaces a clean, actionable
+    "wait and retry" message instead of masking it as a connection error — but
+    the user-facing text is produced by the manager, not from this exception, so
+    no raw API body is shown. The constructor message is for logs only.
+    """
+
+    def __init__(self, message: str = "Rate limited") -> None:
+        super().__init__(message, retriable=True)

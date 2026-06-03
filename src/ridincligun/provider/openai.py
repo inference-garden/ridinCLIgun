@@ -13,11 +13,18 @@ from __future__ import annotations
 import os
 import re
 
-from ridincligun.provider.base import AIReviewResponse, ProviderAdapter, ProviderError
+from ridincligun.provider.base import (
+    AIReviewResponse,
+    ProviderAdapter,
+    ProviderError,
+    ProviderRateLimitError,
+    ProviderSetupError,
+)
 from ridincligun.provider.prompt import SYSTEM_PROMPT, build_review_prompt
 
-# Default: fast, cost-efficient (current as of 2026-05). gpt-4o-mini superseded.
-_DEFAULT_MODEL = "gpt-4.1-mini"
+# Default model — kept in sync with the "OpenAI Fast Review" selector preset and
+# 70_Evaluations/llm_model_evaluation.md (2026-06-03).
+_DEFAULT_MODEL = "gpt-5.4-mini"
 _MAX_TOKENS = 512
 
 
@@ -47,9 +54,9 @@ class OpenAIAdapter(ProviderAdapter):
             try:
                 import openai
             except ImportError as e:
-                raise ProviderError(
-                    "openai package not installed. Run: pip install openai",
-                    retriable=False,
+                raise ProviderSetupError(
+                    "OpenAI SDK not installed. "
+                    'Run: pip install "ridincligun[openai]" (or: pip install openai)'
                 ) from e
             self._client = openai.OpenAI(api_key=self._api_key)
         return self._client
@@ -62,22 +69,27 @@ class OpenAIAdapter(ProviderAdapter):
     ) -> AIReviewResponse:
         """Send a command to OpenAI for review."""
         if not self.is_configured:
-            raise ProviderError(
-                "OPENAI_API_KEY not set. Add it to ~/.config/ridincligun/.env",
-                retriable=False,
-            )
+            raise ProviderSetupError("OPENAI_API_KEY not set. Add it to ~/.config/ridincligun/.env")
 
         user_message = build_review_prompt(command, context)
         effective_prompt = system_prompt or SYSTEM_PROMPT
 
+        # Resolve the client first so a missing-SDK ProviderSetupError propagates
+        # instead of being re-wrapped as a generic "API call failed" below.
+        client = self._get_client()
+
         try:
-            client = self._get_client()
             import asyncio
 
+            # Use `max_completion_tokens`, NOT `max_tokens`: GPT-5 / o-series
+            # reasoning models reject the legacy `max_tokens` (HTTP 400), while
+            # `max_completion_tokens` is the current parameter accepted by all
+            # OpenAI chat models. No silent fallback — one explicit parameter; if
+            # a model rejects it, the error surfaces rather than being retried.
             response = await asyncio.to_thread(
                 client.chat.completions.create,
                 model=self._model,
-                max_tokens=_MAX_TOKENS,
+                max_completion_tokens=_MAX_TOKENS,
                 messages=[
                     {"role": "system", "content": effective_prompt},
                     {"role": "user", "content": user_message},
@@ -88,7 +100,7 @@ class OpenAIAdapter(ProviderAdapter):
             if "authentication" in error_msg.lower() or "api key" in error_msg.lower():
                 raise ProviderError(f"Authentication failed: {error_msg}", retriable=False) from e
             if "rate" in error_msg.lower() and "limit" in error_msg.lower():
-                raise ProviderError(f"Rate limited: {error_msg}", retriable=True) from e
+                raise ProviderRateLimitError(f"Rate limited: {error_msg}") from e
             raise ProviderError(f"API call failed: {error_msg}", retriable=True) from e
 
         raw_text = response.choices[0].message.content or ""

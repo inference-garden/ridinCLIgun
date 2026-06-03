@@ -333,6 +333,63 @@ async def test_deep_analysis_suppressed_when_secret_mode_on(app_config, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_deep_analysis_secret_mode_blocks_fetch(app_config, monkeypatch):
+    """B-S09 S3-4: secret mode on → NO outbound fetch happens at all (pre-fetch gate)."""
+    from ridincligun.provider.deep_analysis import check_deep_analysis_trigger
+
+    fetched: list[str] = []
+
+    async def recording_fetch(url):
+        fetched.append(url)
+        raise AssertionError("fetch_script must not run while secret mode is on")
+
+    monkeypatch.setattr(appmod, "fetch_script", recording_fetch)
+
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _deep_provider()
+        cmd = "curl https://example.com/x.sh | bash"
+        trigger = check_deep_analysis_trigger(cmd)
+
+        app.state.secret_mode = True
+        await app._do_deep_analysis(cmd, trigger)
+        await pilot.pause()
+
+        assert fetched == []  # the network call never started
+
+
+@pytest.mark.asyncio
+async def test_deep_analysis_enforces_ui_language(app_config, monkeypatch):
+    """B-014: deep analysis must carry a locale-bearing system prompt (it passed
+    none before, so weak models answered the script analysis in English in DE/FR)."""
+    from ridincligun.i18n import set_locale
+    from ridincligun.provider.deep_analysis import FetchResult, check_deep_analysis_trigger
+
+    async def fake_fetch(url):
+        return FetchResult(success=True, content="echo hi", url=url, size_bytes=7)
+
+    monkeypatch.setattr(appmod, "fetch_script", fake_fetch)
+
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _deep_provider()
+        cmd = "curl https://example.com/x.sh | bash"
+        trigger = check_deep_analysis_trigger(cmd)
+
+        set_locale("de")
+        try:
+            await app._do_deep_analysis(cmd, trigger)
+            await pilot.pause()
+        finally:
+            set_locale("en")
+
+        kwargs = app._provider.review.call_args.kwargs
+        assert "German" in kwargs["system_prompt"]
+        assert "Deutsch" in kwargs["system_prompt"]  # native-language reinforcement
+        assert "Deutsch" in kwargs["context"]
+
+
+@pytest.mark.asyncio
 async def test_deep_analysis_sends_when_secret_mode_off(app_config, monkeypatch):
     """Control: with secret mode off, the fetched script IS sent for AI analysis."""
     from ridincligun.provider.deep_analysis import FetchResult, check_deep_analysis_trigger
@@ -370,3 +427,140 @@ async def test_history_browser_closes_on_escape(app_config):
         await pilot.pause()
 
         assert len(app.screen_stack) == 1
+
+
+# ── S2: leader copy/paste + secret-safe paste ─────────────────────
+
+
+def _fake_clipboard(text: str):
+    """Return a subprocess.run replacement faking pbpaste (and a no-op pbcopy)."""
+    import subprocess
+
+    def _run(args, *a, **kw):
+        cmd = args[0] if isinstance(args, (list, tuple)) else args
+        out = text.encode("utf-8") if cmd == "pbpaste" else b""
+        return subprocess.CompletedProcess(args, 0, stdout=out, stderr=b"")
+
+    return _run
+
+
+@pytest.mark.asyncio
+async def test_leader_v_dispatches_paste(app_config, monkeypatch):
+    """Ctrl+G, V must reach _do_paste — the wiring is live, not dormant."""
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        called: list[bool] = []
+        monkeypatch.setattr(app, "_do_paste", lambda: called.append(True))
+        await pilot.press("ctrl+g")
+        await pilot.press("v")
+        await pilot.pause()
+        assert called == [True]
+
+
+@pytest.mark.asyncio
+async def test_leader_c_dispatches_copy(app_config, monkeypatch):
+    """Ctrl+G, C must reach _do_copy."""
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        called: list[bool] = []
+        monkeypatch.setattr(app, "_do_copy", lambda: called.append(True))
+        await pilot.press("ctrl+g")
+        await pilot.press("c")
+        await pilot.pause()
+        assert called == [True]
+
+
+@pytest.mark.asyncio
+async def test_paste_with_secret_stages_and_blocks_pty(app_config, monkeypatch):
+    """A secret in the clipboard must NOT reach the PTY; it is staged for confirm.
+
+    This is the load-bearing security property of S2: paste routes through the
+    secret detector before any byte reaches the shell.
+    """
+    import subprocess
+
+    secret = "export API_KEY=sk-ant-api03-" + "a" * 30
+    monkeypatch.setattr(subprocess, "run", _fake_clipboard(secret))
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        shell = app.query_one("#shell-pane", ShellPane)
+        writes: list[bytes] = []
+        monkeypatch.setattr(shell._pty, "write", lambda data: writes.append(data))
+
+        app._do_paste()
+        await pilot.pause()
+
+        assert app._pending_paste_text is not None  # staged, awaiting confirm
+        assert writes == []  # nothing reached the shell
+
+
+@pytest.mark.asyncio
+async def test_paste_clean_writes_bracketed(app_config, monkeypatch):
+    """A clean clipboard pastes into the PTY wrapped in bracketed-paste markers."""
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "run", _fake_clipboard("ls -la"))
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        shell = app.query_one("#shell-pane", ShellPane)
+        writes: list[bytes] = []
+        monkeypatch.setattr(shell._pty, "write", lambda data: writes.append(data))
+
+        app._do_paste()
+        await pilot.pause()
+
+        joined = b"".join(writes)
+        assert b"ls -la" in joined
+        assert joined.startswith(b"\x1b[200~")
+        assert joined.endswith(b"\x1b[201~")
+        assert app._pending_paste_text is None
+
+
+@pytest.mark.asyncio
+async def test_paste_strips_embedded_bracket_end(app_config, monkeypatch):
+    """A crafted clipboard cannot close the paste bracket early (injection guard)."""
+    import subprocess
+
+    payload = "echo hi\x1b[201~ rm -rf /tmp/x"
+    monkeypatch.setattr(subprocess, "run", _fake_clipboard(payload))
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        shell = app.query_one("#shell-pane", ShellPane)
+        writes: list[bytes] = []
+        monkeypatch.setattr(shell._pty, "write", lambda data: writes.append(data))
+
+        app._do_paste()
+        await pilot.pause()
+
+        joined = b"".join(writes)
+        # Exactly one closing marker — the wrapper's own, none from the payload.
+        assert joined.count(b"\x1b[201~") == 1
+        assert joined.endswith(b"\x1b[201~")
+        assert b"echo hi rm -rf /tmp/x" in joined
+
+
+@pytest.mark.asyncio
+async def test_copy_uses_active_selection(app_config, monkeypatch):
+    """Copy sends the active shell selection to the clipboard via pbcopy."""
+    import subprocess
+
+    captured: dict[str, bytes | None] = {}
+
+    def _run(args, *a, **kw):
+        if args[0] == "pbcopy":
+            captured["input"] = kw.get("input")
+        return subprocess.CompletedProcess(args, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        shell = app.query_one("#shell-pane", ShellPane)
+        advisory = app.query_one("#advisory-pane", AdvisoryPane)
+        monkeypatch.setattr(advisory, "has_selection", lambda: False)
+        monkeypatch.setattr(shell, "has_selection", lambda: True)
+        monkeypatch.setattr(shell, "get_selected_text", lambda: "selected text")
+
+        app._do_copy()
+        await pilot.pause()
+
+        assert captured.get("input") == b"selected text"

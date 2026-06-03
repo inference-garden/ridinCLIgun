@@ -43,3 +43,6 @@ htmlcov/
 
 # Ruff
 .ruff_cache/
+
+#scripts
+scripts/

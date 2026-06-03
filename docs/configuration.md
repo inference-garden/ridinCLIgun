@@ -38,7 +38,7 @@ If an existing `.env` is readable by group or others, ridinCLIgun tightens it to
 | Key | Current meaning | Current value on fresh template |
 |-----|-----------------|---------------------------------|
 | `kind` | selected provider kind | `anthropic` |
-| `model` | selected model id | `claude-sonnet-4-20250514` |
+| `model` | selected model id | `claude-sonnet-4-6` |
 | `timeout_seconds` | provider request timeout | `10.0` |
 | `max_tokens` | response token cap | `1024` |
 
@@ -86,8 +86,8 @@ These are the presets currently shown by the in-app selector:
 | Mistral Deep Review | `mistral` | `mistral-medium-3-5` |
 | Claude Fast Review | `anthropic` | `claude-haiku-4-5` |
 | Claude Deep Review | `anthropic` | `claude-sonnet-4-6` |
-| OpenAI Fast Review | `openai` | `gpt-4.1-mini` |
-| OpenAI Deep Review | `openai` | `gpt-5.4-mini` |
+| OpenAI Fast Review | `openai` | `gpt-5.4-mini` |
+| OpenAI Deep Review | `openai` | `gpt-5.4` |
 
 Manual model ids are also possible by editing `config.toml`.
 
@@ -111,4 +111,3 @@ Runtime notes:
 - `F9` grows the advisory pane
 - `F10` grows the shell pane
 - the current `split_ratio` is saved on app shutdown
-

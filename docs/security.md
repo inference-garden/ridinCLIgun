@@ -58,7 +58,7 @@ That history stays local, but it is privacy-relevant because reviewed commands a
 - Only matched secret patterns and a small set of sensitive file paths are redacted. Arbitrary filenames, hostnames, URLs, and user data are preserved.
 - The AI sees command structure intentionally; dangerous targets such as `/dev/...`, `rm -rf`, or pipe chains are not masked.
 - Deep analysis only covers specific download-and-execute patterns. It does not model multi-step attack chains across separate commands.
-- Current gap `B-S09`: Layer 3 still accepts `http://`, has no SSRF/redirect guard, and checks Secret Mode only after the remote fetch returns.
+- Layer 3 fetch hardening (`B-S09`, closed in v0.4.4): HTTPS-only, the resolved IP must be public (loopback/private/link-local/reserved and the `169.254.169.254` metadata endpoint are refused), redirects are re-validated on every hop, and Secret Mode is checked **before** the fetch so toggling it cancels the request. Residual: DNS rebinding is not fully prevented (the IP is re-resolved at connect time).
 - Scripts behind authentication, stdin-fed content, heredocs, and shell sourcing flows are outside current deep-analysis coverage.
 
  .

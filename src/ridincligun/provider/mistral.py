@@ -16,7 +16,13 @@ from __future__ import annotations
 import os
 import re
 
-from ridincligun.provider.base import AIReviewResponse, ProviderAdapter, ProviderError
+from ridincligun.provider.base import (
+    AIReviewResponse,
+    ProviderAdapter,
+    ProviderError,
+    ProviderRateLimitError,
+    ProviderSetupError,
+)
 from ridincligun.provider.prompt import SYSTEM_PROMPT, build_review_prompt
 
 # Default: Mistral Small 4, pinned snapshot (2026-03). Rolling alias: mistral-small-latest.
@@ -48,11 +54,14 @@ class MistralAdapter(ProviderAdapter):
         """Lazy-init the Mistral client."""
         if self._client is None:
             try:
+                # mistralai 2.x ships `Mistral` under the `mistralai.client`
+                # subpackage (the top-level `mistralai` is a namespace package
+                # with nothing exported). Verified against mistralai==2.4.4.
                 from mistralai.client import Mistral
             except ImportError as e:
-                raise ProviderError(
-                    "mistralai package not installed. Run: pip install mistralai",
-                    retriable=False,
+                raise ProviderSetupError(
+                    "Mistral SDK not installed. "
+                    'Run: pip install "ridincligun[mistral]" (or: pip install mistralai)'
                 ) from e
             self._client = Mistral(api_key=self._api_key)
         return self._client
@@ -65,16 +74,18 @@ class MistralAdapter(ProviderAdapter):
     ) -> AIReviewResponse:
         """Send a command to Mistral for review."""
         if not self.is_configured:
-            raise ProviderError(
-                "MISTRAL_API_KEY not set. Add it to ~/.config/ridincligun/.env",
-                retriable=False,
+            raise ProviderSetupError(
+                "MISTRAL_API_KEY not set. Add it to ~/.config/ridincligun/.env"
             )
 
         user_message = build_review_prompt(command, context)
         effective_prompt = system_prompt or SYSTEM_PROMPT
 
+        # Resolve the client first so a missing-SDK ProviderSetupError propagates
+        # instead of being re-wrapped as a generic "API call failed" below.
+        client = self._get_client()
+
         try:
-            client = self._get_client()
             import asyncio
 
             # Mistral SDK uses .chat.complete() (not .create())
@@ -92,7 +103,7 @@ class MistralAdapter(ProviderAdapter):
             if "authentication" in error_msg.lower() or "api key" in error_msg.lower():
                 raise ProviderError(f"Authentication failed: {error_msg}", retriable=False) from e
             if "rate" in error_msg.lower() and "limit" in error_msg.lower():
-                raise ProviderError(f"Rate limited: {error_msg}", retriable=True) from e
+                raise ProviderRateLimitError(f"Rate limited: {error_msg}") from e
             raise ProviderError(f"API call failed: {error_msg}", retriable=True) from e
 
         raw_text = response.choices[0].message.content or ""

@@ -28,6 +28,8 @@ class LeaderAction(Enum):
     MODEL_SELECT = auto()  # M — model/provider selection
     HISTORY = auto()  # H — open review history (was K in v0.4)
     SETTINGS = auto()  # G — open settings menu
+    COPY = auto()  # C — copy current selection to clipboard
+    PASTE = auto()  # V — paste clipboard (routed through secret detector)
 
 
 # Map follow-up keys to actions
@@ -38,6 +40,8 @@ LEADER_MAP: dict[str, LeaderAction] = {
     "m": LeaderAction.MODEL_SELECT,
     "h": LeaderAction.HISTORY,
     "g": LeaderAction.SETTINGS,
+    "c": LeaderAction.COPY,
+    "v": LeaderAction.PASTE,
 }
 
 

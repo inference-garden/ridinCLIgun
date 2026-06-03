@@ -10,21 +10,32 @@ script to a shell (curl|bash, wget|sh, etc.), this module:
 2. Fetches the script content (with safety limits)
 3. Builds a prompt for AI analysis of the script
 
-SECURITY:
-- Only fetches HTTP/HTTPS URLs
-- Size-limited (max 1MB, see _MAX_SCRIPT_SIZE) to prevent memory abuse
-- Timeout-limited (15s, see _FETCH_TIMEOUT) to prevent hanging
+SECURITY (B-S09 hardened):
+- HTTPS only — http:// and every other scheme are rejected before any network use
+- SSRF guard — the resolved IP(s) must be public; loopback/private/link-local/
+  reserved/multicast and the cloud-metadata endpoint (169.254.169.254, incl.
+  IPv4-mapped IPv6 forms) are refused before the request is made
+- Redirects are re-validated on every hop — no transparent follow to an internal
+  target via an open redirect
+- Size-limited (max 1MB, see _MAX_SCRIPT_SIZE) and timeout-limited (15s)
 - Content is sent to the AI for analysis, never executed
-- User sees exactly what is being fetched (URL shown in UI)
-- KNOWN GAP (B-S09): http:// is accepted, no SSRF/redirect guard, and the
-  secret-mode check runs only after the fetch returns. Do not widen the fetch
-  cap/timeout further until B-S09 lands.
+- The secret-mode gate is checked BEFORE the fetch (see app._do_deep_analysis),
+  so toggling secret mode cancels the outbound request, not just the later send
+
+Residual (accepted): DNS rebinding — we validate the resolved IP(s), but urllib
+re-resolves when connecting, so a TOCTOU rebind is not fully prevented. Pinning the
+connection to the validated IP is tracked as a future hardening, not part of B-S09.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 # ── URL extraction ─────────────────────────────────────────────────
 
@@ -110,6 +121,10 @@ _FETCH_TIMEOUT = 15.0  # seconds (larger scripts need more time)
 # Values are *usable input tokens* after reserving ~2K for prompt overhead
 # and ~1K for response tokens.
 
+# Matched LONGEST-PREFIX-first (see _get_context_limit), so a specific family
+# like "gpt-4.1" wins over the generic "gpt-4". Get this wrong and e.g.
+# "gpt-4.1-mini" falls through to the 8K "gpt-4" entry and scripts are wrongly
+# flagged "too large" (the bug this ordering fixes).
 _MODEL_CONTEXT_LIMITS: dict[str, int] = {
     # Anthropic
     "claude-opus-4": 195_000,
@@ -120,17 +135,20 @@ _MODEL_CONTEXT_LIMITS: dict[str, int] = {
     "claude-3-opus": 195_000,
     "claude-3-sonnet": 195_000,
     "claude-3-haiku": 195_000,
-    # OpenAI
-    "gpt-4o": 124_000,
+    # OpenAI — gpt-4.1 and gpt-5.x are large-context (~1M); cap at the 1MB
+    # fetch size in tokens so a max-size script still fits.
+    "gpt-5": 250_000,
+    "gpt-4.1": 250_000,
     "gpt-4o-mini": 124_000,
+    "gpt-4o": 124_000,
     "gpt-4-turbo": 124_000,
-    "gpt-4": 6_000,
+    "gpt-4": 6_000,  # legacy GPT-4 8K — only matched by bare "gpt-4*" ids
     "o1": 195_000,
     "o3": 195_000,
-    # Mistral
+    # Mistral (Small 4 / Medium 3.5 are ~128K-class)
     "mistral-large": 124_000,
-    "mistral-small": 30_000,
-    "mistral-medium": 30_000,
+    "mistral-small": 124_000,
+    "mistral-medium": 124_000,
 }
 
 _DEFAULT_CONTEXT_LIMIT = 30_000  # Conservative fallback for unknown models
@@ -149,61 +167,151 @@ class FetchResult:
     truncated: bool = False
 
 
-async def fetch_script(url: str) -> FetchResult:
-    """Fetch a remote script with safety limits.
+_USER_AGENT = "ridinCLIgun/0.4 (script-safety-check)"
+_MAX_REDIRECTS = 5
+_BLOCK_MSG = (
+    "Refused: the URL resolves to a private, loopback, link-local, or reserved address (SSRF guard)"
+)
 
-    - Only HTTP/HTTPS
-    - Max 1MB (context-window fitting happens separately)
-    - 15s timeout
-    - Never executes content
+
+def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True if an IP must never be fetched (SSRF guard).
+
+    Rejects loopback, private, link-local (incl. the 169.254.169.254 cloud
+    metadata endpoint), reserved, multicast, unspecified, and any non-global
+    address. IPv4-mapped IPv6 (``::ffff:a.b.c.d``) is unwrapped first so a blocked
+    v4 address can't be smuggled through in v6 form.
+    """
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return (
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+        or not ip.is_global
+    )
+
+
+def _resolve_and_check(host: str, port: int) -> str | None:
+    """Resolve *host* and reject it if any resolved address is unsafe.
+
+    Returns ``None`` if safe, else an error string. An IP literal is validated
+    directly (no DNS). For a hostname, **every** resolved address must be public —
+    if any is blocked the whole host is refused (fail closed; a multi-record DNS
+    answer can't smuggle one internal address past the check).
+    """
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        literal = None
+    if literal is not None:
+        return _BLOCK_MSG if _ip_is_blocked(literal) else None
+
+    try:
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except OSError:
+        return "Could not resolve host"
+    if not infos:
+        return "Could not resolve host"
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return _BLOCK_MSG
+        if _ip_is_blocked(ip):
+            return _BLOCK_MSG
+    return None
+
+
+def _check_url(url: str) -> str | None:
+    """Validate a URL for fetching: HTTPS-only + SSRF guard on the host.
+
+    Returns ``None`` if safe, else an error string.
+    """
+    parts = urlsplit(url)
+    if parts.scheme != "https":
+        return "Only HTTPS URLs are allowed"
+    host = parts.hostname
+    if not host:
+        return "Invalid URL (no host)"
+    try:
+        port = parts.port or 443
+    except ValueError:
+        return "Invalid URL (bad port)"
+    return _resolve_and_check(host, port)
+
+
+class _GuardedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-validate every redirect hop before following it.
+
+    urllib would otherwise transparently follow a 3xx to an arbitrary host —
+    including an internal/metadata target reached via an open redirect. Each hop's
+    target is re-checked (HTTPS + SSRF); an unsafe target raises instead of being
+    followed.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+        err = _check_url(newurl)
+        if err:
+            raise urllib.error.URLError(f"blocked redirect to {newurl!r}: {err}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _http_get(req: urllib.request.Request, timeout: float):
+    """Perform an HTTP GET with redirect hops re-validated by the SSRF guard.
+
+    A separate module-level seam so tests can stub the network without patching
+    urllib internals.
+    """
+    opener = urllib.request.build_opener(_GuardedRedirectHandler)
+    # Scheme is validated HTTPS-only and the host SSRF-checked before we get here.
+    return opener.open(req, timeout=timeout)
+
+
+async def fetch_script(url: str) -> FetchResult:
+    """Fetch a remote script with B-S09 safety guards.
+
+    HTTPS-only, SSRF guard on the resolved IP(s), redirects re-validated per hop,
+    1MB / 15s caps. Content is returned for AI analysis and never executed. See
+    the module docstring for the full security model and the DNS-rebinding caveat.
     """
     import asyncio
 
-    if not url.startswith(("http://", "https://")):
-        return FetchResult(success=False, error="Only HTTP/HTTPS URLs supported", url=url)
+    # Validate the initial URL before any network activity (scheme + SSRF).
+    err = _check_url(url)
+    if err:
+        return FetchResult(success=False, error=err, url=url)
 
-    try:
-        import urllib.request
-
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "ridinCLIgun/0.2 (script-safety-check)"},
-        )
-
-        def _do_fetch() -> tuple[bytes, str]:
-            with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT) as resp:  # nosec B310
-                content_type = resp.headers.get("Content-Type", "")
+    def _do_fetch() -> FetchResult:
+        req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+        try:
+            with _http_get(req, _FETCH_TIMEOUT) as resp:
                 data = resp.read(_MAX_SCRIPT_SIZE + 1)
-                return data, content_type
-
-        data, content_type = await asyncio.to_thread(_do_fetch)
-
-        # Check if content looks like text
-        if "html" in content_type.lower() and "text/plain" not in content_type.lower():
-            # HTML pages are unlikely to be shell scripts — still analyze but note it
-            pass
+                final_url = resp.geturl()
+        except urllib.error.HTTPError as e:
+            return FetchResult(success=False, error=f"HTTP error {e.code}", url=url)
+        except (urllib.error.URLError, TimeoutError) as e:
+            reason = getattr(e, "reason", e)
+            return FetchResult(success=False, error=str(reason), url=url)
+        except Exception as e:  # noqa: BLE001 — never let a fetch error crash the review
+            return FetchResult(success=False, error=str(e), url=url)
 
         truncated = len(data) > _MAX_SCRIPT_SIZE
         if truncated:
             data = data[:_MAX_SCRIPT_SIZE]
-
-        try:
-            content = data.decode("utf-8", errors="replace")
-        except Exception:
-            return FetchResult(success=False, error="Could not decode content as text", url=url)
-
+        content = data.decode("utf-8", errors="replace")
         return FetchResult(
             success=True,
             content=content,
-            url=url,
+            url=final_url or url,
             size_bytes=len(data),
             truncated=truncated,
         )
 
-    except TimeoutError:
-        return FetchResult(success=False, error=f"Fetch timed out after {_FETCH_TIMEOUT}s", url=url)
-    except Exception as e:
-        return FetchResult(success=False, error=str(e), url=url)
+    return await asyncio.to_thread(_do_fetch)
 
 
 # ── Deep analysis prompt ───────────────────────────────────────────
@@ -236,13 +344,15 @@ CONCERNS: <security concerns, or "None">
 def _get_context_limit(model_name: str) -> int:
     """Look up the usable context-window size for a model.
 
-    Matches by prefix so that versioned model IDs (e.g.
-    ``claude-sonnet-4-20250514``) resolve to their family limit.
+    Matches by prefix so versioned ids (``claude-sonnet-4-6``, ``gpt-5.4-mini``)
+    resolve to their family limit. Prefixes are tried **longest-first** so a
+    specific family (``gpt-4.1``) wins over a generic one (``gpt-4``) — otherwise
+    ``gpt-4.1-mini`` would collide with the 8K ``gpt-4`` entry.
     """
     if not model_name:
         return _DEFAULT_CONTEXT_LIMIT
     lower = model_name.lower()
-    for prefix, limit in _MODEL_CONTEXT_LIMITS.items():
+    for prefix, limit in sorted(_MODEL_CONTEXT_LIMITS.items(), key=lambda kv: -len(kv[0])):
         if lower.startswith(prefix):
             return limit
     return _DEFAULT_CONTEXT_LIMIT

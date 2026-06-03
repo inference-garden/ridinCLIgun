@@ -261,9 +261,20 @@ class RidinCLIgunApp(App):
         if self._pending_review_command is not None:
             self._pending_review_command = None
 
+        # Any leader action other than PASTE itself discards a staged paste —
+        # don't leave clipboard secrets sitting in memory while the user navigates.
+        if action is not LeaderAction.PASTE and self._pending_paste_text is not None:
+            self._pending_paste_text = None
+
         match action:
             case LeaderAction.QUIT:
                 self.action_quit()
+
+            case LeaderAction.COPY:
+                self._do_copy()
+
+            case LeaderAction.PASTE:
+                self._do_paste()
 
             case LeaderAction.RESTART_SHELL:
                 self._restart_shell()
@@ -535,6 +546,12 @@ class RidinCLIgunApp(App):
 
         Appends results to the existing AI review in the advisory pane.
         """
+        # Pre-fetch secret-mode gate (B-S09): if secret mode is on, make NO
+        # outbound request at all. Checked before the fetch — not just before the
+        # later send — so toggling secret mode cancels the network call itself.
+        if self.state.secret_mode:
+            return
+
         # Show "fetching" indicator appended to current review
         self._append_advisory_lines(
             [
@@ -597,9 +614,15 @@ class RidinCLIgunApp(App):
             was_truncated,
             locale=get_locale(),
         )
+        # Deep analysis must enforce the user's language just as strongly as a
+        # normal review (Layer 2) does: a locale-bearing system prompt PLUS the
+        # locale instruction in the user turn. Without the system prompt, weaker
+        # models (Mistral Small, Claude Haiku) answered the script analysis in
+        # English even when the UI was set to DE/FR (B-014).
         analysis = await self._provider.review(
             prompt,
-            context="deep_script_analysis",
+            context=build_locale_context(get_locale()),
+            system_prompt=build_system_prompt("general", self.config.review_mode, get_locale()),
         )
 
         # Remove "analyzing" status line
@@ -907,9 +930,10 @@ class RidinCLIgunApp(App):
         # Anthropic: https://platform.claude.com/docs/en/docs/about-claude/models
         ("Claude Fast Review", "anthropic", "claude-haiku-4-5"),
         ("Claude Deep Review", "anthropic", "claude-sonnet-4-6"),
-        # OpenAI: https://developers.openai.com/api/docs/models — verified 2026-05-16
-        ("OpenAI Fast Review", "openai", "gpt-4.1-mini"),
-        ("OpenAI Deep Review", "openai", "gpt-5.4-mini"),
+        # OpenAI: https://developers.openai.com/api/docs/models
+        # Models per 70_Evaluations/llm_model_evaluation.md (2026-06-03).
+        ("OpenAI Fast Review", "openai", "gpt-5.4-mini"),
+        ("OpenAI Deep Review", "openai", "gpt-5.4"),
     ]
 
     def _show_model_selector(self) -> None:
@@ -1104,6 +1128,10 @@ class RidinCLIgunApp(App):
                 timeout=2,
             )
             text = result.stdout.decode("utf-8", errors="replace")
+            # Clipboard is untrusted input. Strip bracketed-paste markers so a
+            # crafted clipboard cannot close the paste bracket early and inject
+            # raw control bytes into the shell (paste-injection breakout).
+            text = text.replace("\x1b[200~", "").replace("\x1b[201~", "")
             if not text:
                 self._toast(t("toast.clipboard_empty"))
                 return
@@ -1377,6 +1405,8 @@ class RidinCLIgunApp(App):
                     (f"  Ctrl+G, H      {t('help.history')}", ""),
                     (f"  Ctrl+G, M      {t('help.model_select')}", ""),
                     (f"  Ctrl+G, G      {t('help.settings')}", ""),
+                    (f"  Ctrl+G, C      {t('help.copy')}", ""),
+                    (f"  Ctrl+G, V      {t('help.paste')}", ""),
                     (f"  Ctrl+G, X      {t('help.restart_shell')}", ""),
                     (f"  Ctrl+G, D      {t('help.debug')}", ""),
                     (f"  Ctrl+G, Q      {t('help.quit')}", ""),
