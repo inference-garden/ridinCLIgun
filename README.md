@@ -63,6 +63,8 @@ The terminal is where a lot of real learning happens: shells, scripts, package m
 
 This project exists because the terminal should not be a gatekeeper. If you're curious enough to open one, you deserve a companion that helps you learn safely without taking control away from you.
 
+See also the product page of [ridinCLIgun](https://inference-garden.dev/en/products/ridincligun.html).
+
 ## New to the terminal?
 
 The command line is powerful — but unforgiving. There is no undo for many operations, and a typo in the wrong place can turn a useful command into a broken or destructive one.
