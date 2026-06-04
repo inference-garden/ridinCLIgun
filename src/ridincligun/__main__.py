@@ -4,10 +4,26 @@
 
 """Entry point for `python -m ridincligun`."""
 
+import argparse
+
+from ridincligun import __version__
 from ridincligun.app import RidinCLIgunApp
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="ridincligun",
+        description="A terminal companion that advises but never acts.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"ridincligun {__version__}",
+    )
+    # Bare launch parses to an empty namespace and falls through to the TUI;
+    # --version / --help print to stdout and exit before the app is built.
+    parser.parse_args()
+
     app = RidinCLIgunApp()
     app.run()
 

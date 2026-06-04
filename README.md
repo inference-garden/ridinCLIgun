@@ -82,7 +82,18 @@ For AI-powered review you also need an API key from one of the supported provide
 
 ## Quick Start
 
-Current installation is from source:
+### Install via Homebrew (macOS — recommended)
+
+```bash
+brew tap inference-garden/ridincligun
+brew install ridincligun
+```
+
+Then run `ridincligun`. This includes all three AI providers out of the box; the local
+advisory features work without any API key. Upgrade later with `brew upgrade ridincligun`,
+and uninstall with `brew uninstall ridincligun`.
+
+### Install from source
 
 ```bash
 git clone git@github.com:inference-garden/ridinCLIgun.git
@@ -92,7 +103,7 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 ```
 
-### Install options
+#### Install options
 
 **a) Local-only** — offline advisory, no AI provider dependencies:
 
@@ -162,9 +173,9 @@ Frequent actions live on function keys. Modal actions use `Ctrl+G` as a leader k
 
 ## Status
 
-**v0.4.4** — current line. macOS, Python 3.12+.
+**v0.4.5** — current line. macOS, Python 3.12+.
 
-The next step in the v0.4.x line is Homebrew packaging, then polish and Linux support — not a new product direction.
+Homebrew install landed in v0.4.5; the next steps in the v0.4.x line are polish and Linux support — not a new product direction.
 
 ## Config
 
