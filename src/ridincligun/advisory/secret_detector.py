@@ -125,9 +125,13 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
         "Credentials embedded in URL (user:pass@host)",
     ),
     # ── Export / assignment of secrets ──────────────────────────────
+    # ReDoS-hardened: the old optional prefixes ((?:export\s+)?\w*) never
+    # constrain a boolean search() but made the scan quadratic (~5s on a 20KB
+    # pasted run of word chars). The name tail is bounded to 64 word chars —
+    # longer var names after the keyword are unrealistic and out of scope.
     (
         re.compile(
-            r"""(?:export\s+)?\w*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH|PASSWD)\w*\s*=\s*['"]?[^\s'"]{8,}""",
+            r"""(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH|PASSWD)\w{0,64}\s*=\s*['"]?[^\s'"]{8,}""",
             re.IGNORECASE,
         ),
         "env_secret",

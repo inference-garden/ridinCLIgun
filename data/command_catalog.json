@@ -6,7 +6,7 @@
       "name": "Remove files",
       "patterns": [
         {
-          "regex": "rm\\s+.*-[^\\s]*r[^\\s]*f|rm\\s+.*-[^\\s]*f[^\\s]*r|rm\\s+-rf|rm\\s+-fr",
+          "regex": "rm\\s+.*-[^\\s]{0,30}r[^\\s]{0,30}f|rm\\s+.*-[^\\s]{0,30}f[^\\s]{0,30}r|rm\\s+-rf|rm\\s+-fr",
           "risk": "danger",
           "summary": "Recursive forced deletion — removes files permanently without confirmation.",
           "suggestion": "Use 'rm -ri' for interactive confirmation, or 'trash' to move to Trash."
@@ -30,7 +30,7 @@
       "name": "Change permissions",
       "patterns": [
         {
-          "regex": "chmod\\s+.*-[^\\s]*R.*777|chmod\\s+777\\s+.*-[^\\s]*R|chmod\\s+-R\\s+777",
+          "regex": "chmod\\s+.*-[^\\s]{0,30}R.*777|chmod\\s+777\\s+.*-[^\\s]{0,30}R|chmod\\s+-R\\s+777",
           "risk": "danger",
           "summary": "Recursively setting world-readable/writable/executable permissions.",
           "suggestion": "Use specific permissions (e.g., 755 for dirs, 644 for files). Avoid 777."
@@ -72,7 +72,7 @@
       "name": "Elevated privileges",
       "patterns": [
         {
-          "regex": "sudo\\s+rm\\s+.*-[^\\s]*r[^\\s]*f|sudo\\s+rm\\s+.*-[^\\s]*f[^\\s]*r|sudo\\s+rm\\s+-rf",
+          "regex": "sudo\\s+rm\\s+.*-[^\\s]{0,30}r[^\\s]{0,30}f|sudo\\s+rm\\s+.*-[^\\s]{0,30}f[^\\s]{0,30}r|sudo\\s+rm\\s+-rf",
           "risk": "danger",
           "summary": "Recursive forced deletion with root privileges — maximum damage potential.",
           "suggestion": "Be extremely careful. Consider running without sudo first to see what would be deleted."

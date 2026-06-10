@@ -44,9 +44,12 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
+        # ".[all]" (= dev + anthropic/openai/mistral extras) so pip-audit also
+        # scans the optional network-facing AI SDKs and their transitive deps,
+        # not just the core install.
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[all]"
 
       - name: Static security analysis
         run: bandit -r src/ridincligun/ -c pyproject.toml

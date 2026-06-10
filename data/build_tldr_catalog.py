@@ -23,20 +23,27 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
+import sys
 import urllib.request
 import zipfile
 from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────
 # Pinned to a known stable release for reproducibility.
-# Update this URL when upgrading.
+# Update BOTH the URL and the sha256 when upgrading:
+#   curl -sL <url> | shasum -a 256
 TLDR_ZIP_URL = "https://github.com/tldr-pages/tldr/releases/download/v2.3/tldr.zip"
+TLDR_ZIP_SHA256 = (
+    "cdc211daffe40e057ed676dd422331d28e13d1c079697af68439397c31f0a0c8"  # pragma: allowlist secret
+)
 PLATFORMS = {"common", "linux", "osx"}  # page platforms to include
 MIN_EXAMPLES = 1  # skip pages with fewer examples
 
 OUT_PATH = Path(__file__).parent / "tldr_catalog.json"
+MANIFEST_PATH = Path(__file__).parent / "tldr_manifest.json"
 
 # Additional locale catalogs built alongside the English baseline.
 # Keys are tldr directory prefixes, values are output file paths.
@@ -119,6 +126,31 @@ def _parse_page(content: str) -> dict | None:
 # ── Main ──────────────────────────────────────────────────────────
 
 
+def write_manifest() -> None:
+    """Write data/tldr_manifest.json: provenance + per-file sha256.
+
+    Plain JSON, git-diffable. tests/test_tldr_integrity.py verifies the
+    bundled catalogs against this manifest, so any silent edit of the corpus
+    fails CI unless the manifest is regenerated in the same reviewed change.
+    """
+    files = {}
+    for path in [OUT_PATH, *LOCALE_CATALOGS.values()]:
+        data = path.read_bytes()
+        files[path.name] = {
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "bytes": len(data),
+        }
+    manifest = {
+        "source": TLDR_ZIP_URL,
+        "source_sha256": TLDR_ZIP_SHA256,
+        "files": files,
+    }
+    MANIFEST_PATH.write_text(
+        json.dumps(manifest, indent=1, separators=(",", ": ")) + "\n", encoding="utf-8"
+    )
+    print(f"Written: {MANIFEST_PATH}", flush=True)
+
+
 def build() -> None:
     print(f"Downloading tldr-pages from:\n  {TLDR_ZIP_URL}", flush=True)
     print("(MIT license — community command documentation)", flush=True)
@@ -127,6 +159,19 @@ def build() -> None:
         zip_bytes = resp.read()
 
     print(f"Downloaded {len(zip_bytes) / 1024:.0f} KB", flush=True)
+
+    # Integrity gate: the release asset must match the pinned hash. A changed
+    # upstream asset (re-tagged release, compromised artifact) aborts the build
+    # instead of silently regenerating the corpus from unknown content.
+    actual = hashlib.sha256(zip_bytes).hexdigest()
+    if actual != TLDR_ZIP_SHA256:
+        sys.exit(
+            f"ERROR: tldr.zip sha256 mismatch\n  expected: {TLDR_ZIP_SHA256}\n"
+            f"  actual:   {actual}\n"
+            "Refusing to build. If the upstream release was intentionally "
+            "updated, verify the new asset and update TLDR_ZIP_SHA256."
+        )
+    print("sha256 verified against pinned value", flush=True)
 
     # catalog_by_dir: top-level dir → {command: {desc, examples}}
     catalog_by_dir: dict[str, dict[str, dict]] = {}
@@ -184,7 +229,15 @@ def build() -> None:
         print(f"Parsed {len(locale_catalog)} {locale_code} commands", flush=True)
         _write_catalog(locale_catalog, out_path, locale_code)
 
+    write_manifest()
+
 
 if __name__ == "__main__":
-    build()
+    # --manifest-only: (re)write the manifest from the catalogs already on
+    # disk, without any network access. Used for initial adoption and after a
+    # reviewed manual correction of the bundled JSON.
+    if "--manifest-only" in sys.argv[1:]:
+        write_manifest()
+    else:
+        build()
     print("Done.", flush=True)
