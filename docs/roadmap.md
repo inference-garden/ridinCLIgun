@@ -27,6 +27,13 @@ CI pipeline, security hardening.
 - Provider/model switching persists across restarts
 - Provider and model configurable directly from the Settings screen
 
+## v0.4.5 — "This tool is genuinely useful." ✅ shipped 2026-06-04
+
+**Easy Install:**
+- Homebrew tap installation is live on macOS.
+- brew tap inference-garden/ridincligun and
+- brew install ridincligun now get the helper onto your machine without the old source detour. Small release, real milestone, fully worth a little confetti.
+
 ## v0.5 — "This tool thinks with me." (planned)
 
 The advisory pane gets interactive. AI responses appear as they stream. You can
