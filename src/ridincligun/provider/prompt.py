@@ -142,6 +142,16 @@ def build_locale_context(locale: str) -> str:
     return f"{instruction} {native}".strip() if native else instruction
 
 
+def get_mode_supplement(mode: str) -> str:
+    """Return the tone/audience supplement for a review mode, or "" if none.
+
+    Shared by the Layer 2 system prompt and the Layer 3 deep-analysis system
+    prompt so both speak with the same voice (e.g. explorer mode).
+    """
+    templates = _get_templates()
+    return templates.get("modes", {}).get(mode, {}).get("supplement", "").strip()
+
+
 def build_system_prompt(
     category: str = "general",
     mode: str = "default",
@@ -168,8 +178,7 @@ def build_system_prompt(
         parts.append(f"\nCategory-specific guidance:\n{cat_supplement}")
 
     # Mode supplement
-    mode_data = templates.get("modes", {}).get(mode, {})
-    mode_supplement = mode_data.get("supplement", "").strip()
+    mode_supplement = get_mode_supplement(mode)
     if mode_supplement:
         parts.append(f"\nTone and audience:\n{mode_supplement}")
 

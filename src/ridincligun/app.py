@@ -29,6 +29,7 @@ from ridincligun.provider import create_provider
 from ridincligun.provider.base import AIReviewResponse
 from ridincligun.provider.deep_analysis import (
     build_deep_analysis_prompt,
+    build_deep_analysis_system_prompt,
     check_deep_analysis_trigger,
     fetch_script,
     fit_script_to_context,
@@ -614,15 +615,18 @@ class RidinCLIgunApp(App):
             was_truncated,
             locale=get_locale(),
         )
-        # Deep analysis must enforce the user's language just as strongly as a
-        # normal review (Layer 2) does: a locale-bearing system prompt PLUS the
-        # locale instruction in the user turn. Without the system prompt, weaker
-        # models (Mistral Small, Claude Haiku) answered the script analysis in
-        # English even when the UI was set to DE/FR (B-014).
+        # Layer 3 runs on its dedicated deep-analysis system prompt (script
+        # security analyzer role + RISK/SUMMARY/ACTIONS/CONCERNS format), not the
+        # generic Layer 2 category prompt. Language is enforced just as strongly
+        # as in Layer 2: a locale-bearing system prompt PLUS the locale
+        # instruction in the user turn — without it, weaker models (Mistral
+        # Small, Claude Haiku) answered in English even in DE/FR (B-014).
         analysis = await self._provider.review(
             prompt,
             context=build_locale_context(get_locale()),
-            system_prompt=build_system_prompt("general", self.config.review_mode, get_locale()),
+            system_prompt=build_deep_analysis_system_prompt(
+                locale=get_locale(), mode=self.config.review_mode
+            ),
         )
 
         # Remove "analyzing" status line

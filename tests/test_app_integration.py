@@ -390,6 +390,33 @@ async def test_deep_analysis_enforces_ui_language(app_config, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_deep_analysis_uses_dedicated_system_prompt(app_config, monkeypatch):
+    """Layer 3 must run on the dedicated deep-analysis system prompt
+    (script-analyzer role, RISK/SUMMARY/ACTIONS/CONCERNS format), not the generic
+    Layer 2 category prompt."""
+    from ridincligun.provider.deep_analysis import FetchResult, check_deep_analysis_trigger
+
+    async def fake_fetch(url):
+        return FetchResult(success=True, content="echo hi", url=url, size_bytes=7)
+
+    monkeypatch.setattr(appmod, "fetch_script", fake_fetch)
+
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _deep_provider()
+        cmd = "curl https://example.com/x.sh | bash"
+        trigger = check_deep_analysis_trigger(cmd)
+
+        await app._do_deep_analysis(cmd, trigger)
+        await pilot.pause()
+
+        system_prompt = app._provider.review.call_args.kwargs["system_prompt"]
+        assert "script security analyzer" in system_prompt
+        # Format stays parser-compatible (RISK/SUMMARY/EXPLANATION/SUGGESTION)
+        assert "EXPLANATION:" in system_prompt
+
+
+@pytest.mark.asyncio
 async def test_deep_analysis_sends_when_secret_mode_off(app_config, monkeypatch):
     """Control: with secret mode off, the fetched script IS sent for AI analysis."""
     from ridincligun.provider.deep_analysis import FetchResult, check_deep_analysis_trigger

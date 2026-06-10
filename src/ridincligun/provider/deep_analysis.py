@@ -21,14 +21,20 @@ SECURITY (B-S09 hardened):
 - Content is sent to the AI for analysis, never executed
 - The secret-mode gate is checked BEFORE the fetch (see app._do_deep_analysis),
   so toggling secret mode cancels the outbound request, not just the later send
-
-Residual (accepted): DNS rebinding — we validate the resolved IP(s), but urllib
-re-resolves when connecting, so a TOCTOU rebind is not fully prevented. Pinning the
-connection to the validated IP is tracked as a future hardening, not part of B-S09.
+- DNS-rebinding (TOCTOU) closed: the connection is PINNED to the IP that was
+  resolved and validated (_PinnedHTTPSHandler) — a rebinding DNS server cannot
+  pass validation with a public address and then serve an internal one at
+  connect time. TLS SNI + certificate verification still run against the
+  hostname, so pinning cannot weaken cert checks.
+- Environment proxies are deliberately ignored for this fetch (the SSRF guard
+  is unsound through a proxy, which resolves the name itself). In proxied-only
+  networks the fetch fails gracefully into the "fetch failed" advisory.
 """
 
 from __future__ import annotations
 
+import functools
+import http.client
 import ipaddress
 import re
 import socket
@@ -36,6 +42,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from urllib.parse import urlsplit
+
+from ridincligun.provider.prompt import _LOCALE_NATIVE_DIRECTIVE, get_mode_supplement
 
 # ── URL extraction ─────────────────────────────────────────────────
 
@@ -195,35 +203,47 @@ def _ip_is_blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     )
 
 
-def _resolve_and_check(host: str, port: int) -> str | None:
-    """Resolve *host* and reject it if any resolved address is unsafe.
+def _resolve_validated(host: str, port: int) -> tuple[str | None, str | None]:
+    """Resolve *host* once, validate every address, and return one to pin.
 
-    Returns ``None`` if safe, else an error string. An IP literal is validated
-    directly (no DNS). For a hostname, **every** resolved address must be public —
-    if any is blocked the whole host is refused (fail closed; a multi-record DNS
-    answer can't smuggle one internal address past the check).
+    Returns ``(ip, None)`` if safe — *ip* is the first resolved address, used
+    as the pinned connect target — or ``(None, error)`` if unsafe. An IP
+    literal is validated directly (no DNS). For a hostname, **every** resolved
+    address must be public — if any is blocked the whole host is refused (fail
+    closed; a multi-record DNS answer can't smuggle one internal address past
+    the check).
     """
     try:
         literal = ipaddress.ip_address(host)
     except ValueError:
         literal = None
     if literal is not None:
-        return _BLOCK_MSG if _ip_is_blocked(literal) else None
+        if _ip_is_blocked(literal):
+            return None, _BLOCK_MSG
+        return host, None
 
     try:
         infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except OSError:
-        return "Could not resolve host"
+        return None, "Could not resolve host"
     if not infos:
-        return "Could not resolve host"
+        return None, "Could not resolve host"
+    ips: list[str] = []
     for info in infos:
         try:
             ip = ipaddress.ip_address(info[4][0])
         except ValueError:
-            return _BLOCK_MSG
+            return None, _BLOCK_MSG
         if _ip_is_blocked(ip):
-            return _BLOCK_MSG
-    return None
+            return None, _BLOCK_MSG
+        ips.append(str(ip))
+    return ips[0], None
+
+
+def _resolve_and_check(host: str, port: int) -> str | None:
+    """Boolean form of :func:`_resolve_validated` (pre-flight URL checks)."""
+    _ip, err = _resolve_validated(host, port)
+    return err
 
 
 def _check_url(url: str) -> str | None:
@@ -260,14 +280,66 @@ class _GuardedRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS connection whose TCP target is a pre-validated, pinned IP.
+
+    DNS-rebinding defense: the socket connects to *pinned_ip* (no second DNS
+    lookup), while TLS SNI and certificate verification still use the real
+    hostname — so the cert must be valid for the host the user's command named.
+    """
+
+    def __init__(self, host: str, *, pinned_ip: str, **kwargs) -> None:
+        super().__init__(host, **kwargs)
+        self._pinned_ip = pinned_ip
+
+    def connect(self) -> None:  # pragma: no cover - exercised via handler tests
+        sock = socket.create_connection(
+            (self._pinned_ip, self.port), self.timeout, self.source_address
+        )
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    """Resolve + validate + pin in ONE step at connect time.
+
+    This is the authoritative SSRF check: it runs for the initial request and
+    for every redirect hop (each hop re-enters ``https_open``), and the address
+    that passed validation is exactly the address the socket connects to —
+    closing the resolve/connect TOCTOU window a rebinding DNS server exploits.
+    """
+
+    def https_open(self, req):  # type: ignore[override]
+        parts = urlsplit(req.full_url)
+        host = parts.hostname
+        if not host:
+            raise urllib.error.URLError("Invalid URL (no host)")
+        try:
+            port = parts.port or 443
+        except ValueError:
+            raise urllib.error.URLError("Invalid URL (bad port)") from None
+        pinned_ip, err = _resolve_validated(host, port)
+        if err or pinned_ip is None:
+            raise urllib.error.URLError(err or _BLOCK_MSG)
+        factory = functools.partial(_PinnedHTTPSConnection, pinned_ip=pinned_ip)
+        return self.do_open(factory, req, context=self._context)
+
+
 def _http_get(req: urllib.request.Request, timeout: float):
     """Perform an HTTP GET with redirect hops re-validated by the SSRF guard.
 
     A separate module-level seam so tests can stub the network without patching
     urllib internals.
     """
-    opener = urllib.request.build_opener(_GuardedRedirectHandler)
-    # Scheme is validated HTTPS-only and the host SSRF-checked before we get here.
+    # ProxyHandler({}) disables environment proxies: through a proxy the SSRF
+    # guard and IP pinning would be meaningless (the proxy resolves the name).
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _GuardedRedirectHandler,
+        _PinnedHTTPSHandler(),
+    )
+    # Scheme is validated HTTPS-only before we get here; the handler above
+    # re-validates and pins the address for the initial request and every hop.
     return opener.open(req, timeout=timeout)
 
 
@@ -333,12 +405,43 @@ Rules:
 Response format:
 RISK: <safe|caution|warning|danger>
 SUMMARY: <one-line description of what the script does>
-ACTIONS:
-- <action 1>
-- <action 2>
-- ...
-CONCERNS: <security concerns, or "None">
+EXPLANATION: <the script's significant actions — installs, modifies, deletes,
+downloads, network calls, privilege escalation, persistence — and any security
+concerns, as short factual lines>
+SUGGESTION: <how to proceed safely, or "None">
 """
+# NOTE: the response format above MUST stay parseable by the shared adapter
+# parser (RISK/SUMMARY/EXPLANATION/SUGGESTION — see provider/*. _parse_response).
+# An earlier ACTIONS/CONCERNS format was silently dropped by that parser;
+# tests/test_deep_analysis.py pins the compatibility.
+
+
+def build_deep_analysis_system_prompt(locale: str = "en", mode: str = "default") -> str:
+    """Compose the dedicated Layer 3 system prompt.
+
+    Mirrors ``build_system_prompt()`` composition — base + mode tone + language
+    instruction placed LAST (recency helps weaker models honour it, B-014) —
+    but on the deep-analysis base prompt and with this format's field names.
+    """
+    parts = [DEEP_ANALYSIS_SYSTEM.rstrip()]
+
+    mode_supplement = get_mode_supplement(mode)
+    if mode_supplement:
+        parts.append(f"\nTone and audience:\n{mode_supplement}")
+
+    if locale and locale != "en":
+        lang_name = _LANGUAGE_NAMES.get(locale, locale)
+        lang_line = (
+            f"\nIMPORTANT: Write all SUMMARY, EXPLANATION, and SUGGESTION content "
+            f"in {lang_name}. Keep the response format headers "
+            f"(RISK, SUMMARY, EXPLANATION, SUGGESTION) in English."
+        )
+        native = _LOCALE_NATIVE_DIRECTIVE.get(locale, "")
+        if native:
+            lang_line += f"\n{native}"
+        parts.append(lang_line)
+
+    return "\n".join(parts)
 
 
 def _get_context_limit(model_name: str) -> int:
@@ -405,9 +508,9 @@ def build_deep_analysis_prompt(
     if locale and locale != "en":
         lang_name = _LANGUAGE_NAMES.get(locale, locale)
         parts.append(
-            f"IMPORTANT: Write all SUMMARY, ACTIONS, and CONCERNS content "
+            f"IMPORTANT: Write all SUMMARY, EXPLANATION, and SUGGESTION content "
             f"in {lang_name}. Keep the response format headers "
-            f"(RISK, SUMMARY, ACTIONS, CONCERNS) in English.\n"
+            f"(RISK, SUMMARY, EXPLANATION, SUGGESTION) in English.\n"
         )
     parts.append(f"```\n{script_content}\n```")
     return "\n".join(parts)

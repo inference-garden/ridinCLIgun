@@ -21,6 +21,7 @@ from ridincligun.provider.deep_analysis import (
     _GuardedRedirectHandler,
     _ip_is_blocked,
     build_deep_analysis_prompt,
+    build_deep_analysis_system_prompt,
     check_deep_analysis_trigger,
     fetch_script,
     fit_script_to_context,
@@ -107,10 +108,55 @@ def test_deep_analysis_prompt_truncation_note() -> None:
     assert "truncated" in prompt.lower()
 
 
-def test_deep_analysis_system_prompt_has_format() -> None:
-    assert "RISK:" in DEEP_ANALYSIS_SYSTEM
-    assert "ACTIONS:" in DEEP_ANALYSIS_SYSTEM
-    assert "CONCERNS:" in DEEP_ANALYSIS_SYSTEM
+def test_deep_analysis_system_prompt_format_matches_shared_parser() -> None:
+    """The deep prompt's response format MUST be what the adapters parse.
+
+    Regression pin: an earlier ACTIONS/CONCERNS format was silently dropped by
+    the shared RISK/SUMMARY/EXPLANATION/SUGGESTION parser (_parse_response) —
+    deep analysis would render only the one-line summary.
+    """
+    for field in ("RISK:", "SUMMARY:", "EXPLANATION:", "SUGGESTION:"):
+        assert field in DEEP_ANALYSIS_SYSTEM, field
+    for stale in ("ACTIONS:", "CONCERNS:"):
+        assert stale not in DEEP_ANALYSIS_SYSTEM, stale
+
+
+# ── Dedicated Layer 3 system prompt composition ────────────────────
+
+
+def test_deep_system_prompt_default_is_base_only() -> None:
+    """English + default mode: exactly the dedicated base, no supplements."""
+    prompt = build_deep_analysis_system_prompt()
+    assert prompt == DEEP_ANALYSIS_SYSTEM.rstrip()
+
+
+def test_deep_system_prompt_locale_de() -> None:
+    """DE: language instruction with the DEEP field names + native directive (B-014)."""
+    prompt = build_deep_analysis_system_prompt(locale="de")
+    assert prompt.startswith("You are a script security analyzer")
+    assert "in German" in prompt
+    assert "Deutsch" in prompt  # native-language reinforcement
+    # Same field names the shared parser extracts
+    assert "SUMMARY, EXPLANATION, and SUGGESTION" in prompt
+
+
+def test_deep_system_prompt_locale_fr() -> None:
+    prompt = build_deep_analysis_system_prompt(locale="fr")
+    assert "in French" in prompt
+    assert "français" in prompt
+
+
+def test_deep_system_prompt_language_instruction_is_last() -> None:
+    """Recency: the language block must come AFTER the analyzer instructions."""
+    prompt = build_deep_analysis_system_prompt(locale="de", mode="explorer")
+    assert prompt.rindex("Deutsch") > prompt.index("SUGGESTION:")
+
+
+def test_deep_system_prompt_explorer_mode_supplement() -> None:
+    """Explorer mode keeps its tone in deep analysis (parity with Layer 2)."""
+    prompt = build_deep_analysis_system_prompt(mode="explorer")
+    assert "Tone and audience:" in prompt
+    assert prompt.startswith("You are a script security analyzer")
 
 
 # ── FetchResult safety states ────────────────────────────────────
@@ -425,3 +471,76 @@ async def test_fetch_script_enforces_size_cap(monkeypatch):
     assert result.truncated
     assert result.size_bytes == _MAX_SCRIPT_SIZE
     assert len(result.content) <= _MAX_SCRIPT_SIZE
+
+
+# ── DNS-rebinding defense: pinned connect ─────────────────────────
+
+
+def test_resolve_validated_returns_first_public_ip(monkeypatch) -> None:
+    _patch_resolver(monkeypatch, "93.184.216.34")
+    ip, err = da._resolve_validated("example.com", 443)
+    assert err is None
+    assert ip == "93.184.216.34"
+
+
+def test_resolve_validated_ip_literal_passthrough() -> None:
+    ip, err = da._resolve_validated("93.184.216.34", 443)
+    assert err is None
+    assert ip == "93.184.216.34"
+
+
+def test_resolve_validated_blocked_returns_error(monkeypatch) -> None:
+    _patch_resolver(monkeypatch, "10.0.0.5")
+    ip, err = da._resolve_validated("example.com", 443)
+    assert ip is None
+    assert err
+
+
+def test_pinned_connection_uses_validated_ip_and_hostname_sni(monkeypatch) -> None:
+    """TCP goes to the pinned IP; TLS SNI/cert checks use the real hostname."""
+    from unittest.mock import MagicMock
+
+    connected: list[tuple] = []
+
+    def _fake_create_connection(addr, timeout=None, source_address=None):
+        connected.append(addr)
+        return MagicMock()
+
+    class _FakeCtx:
+        def __init__(self) -> None:
+            self.hostnames: list[str | None] = []
+
+        def wrap_socket(self, sock, server_hostname=None):
+            self.hostnames.append(server_hostname)
+            return sock
+
+    monkeypatch.setattr(socket, "create_connection", _fake_create_connection)
+    ctx = _FakeCtx()
+    conn = da._PinnedHTTPSConnection("example.com", pinned_ip="93.184.216.34", context=ctx)
+    conn.connect()
+
+    assert connected == [("93.184.216.34", 443)]  # no DNS at connect time
+    assert ctx.hostnames == ["example.com"]  # SNI + cert check use the hostname
+
+
+@pytest.mark.asyncio
+async def test_fetch_script_blocks_dns_rebinding(monkeypatch):
+    """TOCTOU regression: DNS flips public -> internal between the pre-flight
+    check and connect time. The pinned handler re-resolves and must refuse —
+    and nothing may open a socket."""
+    answers = iter(["93.184.216.34", "127.0.0.1"])
+
+    def _flipping_dns(host, port, *args, **kwargs):
+        ip = next(answers, "127.0.0.1")
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port))]
+
+    def _no_connect(*args, **kwargs):
+        raise AssertionError("socket must not be opened for a rebinding host")
+
+    monkeypatch.setattr(socket, "getaddrinfo", _flipping_dns)
+    monkeypatch.setattr(socket, "create_connection", _no_connect)
+
+    result = await fetch_script("https://rebind.example.com/x.sh")
+
+    assert not result.success
+    assert "blocked" in result.error.lower() or "private" in result.error.lower()
