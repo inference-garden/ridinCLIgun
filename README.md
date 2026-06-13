@@ -95,6 +95,11 @@ Then run `ridincligun`. This includes all three AI providers out of the box; the
 advisory features work without any API key. Upgrade later with `brew upgrade ridincligun`,
 and uninstall with `brew uninstall ridincligun`.
 
+The install pours a prebuilt bottle — it finishes in seconds and pulls no compiler
+toolchain. If Homebrew refuses the tap with an untrusted-tap error (Homebrew 6 requires
+explicit trust for third-party taps), run `brew trust inference-garden/ridincligun` and
+retry.
+
 ### Install from source
 
 ```bash
