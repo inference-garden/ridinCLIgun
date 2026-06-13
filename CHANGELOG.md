@@ -4,6 +4,33 @@ All notable changes to ridinCLIgun are documented here. Dates are ISO 8601.
 This project follows [Semantic Versioning](https://semver.org/) loosely while in the
 v0.x line. The advisory layer is always local-first; an AI backend is optional.
 
+## [0.4.6] — 2026-06-13
+
+### Added
+- **Faster install via prebuilt bottles.** `brew install ridincligun` now pours a
+  prebuilt binary in seconds instead of compiling a Rust/LLVM toolchain. Installing
+  from source remains supported as a fallback.
+- **`exit ride`** quits ridinCLIgun cleanly from the shell prompt — an exact,
+  case-insensitive match that never triggers as part of a larger command line.
+- **Scroll indicator in the advisory pane** when content overflows, so it is clear
+  there is more to read.
+
+### Changed
+- **Offline help responds to the command variant you type.** Typing a subcommand
+  (e.g. `git commit`) now shows that subcommand's page; the examples matching the
+  flags and arguments you have typed are surfaced to the top and highlighted, and a
+  short per-flag note is shown. Everything stays local and synchronous, with
+  localized descriptions falling back to English.
+
+### Security
+- Hardened the command-pattern and secret-detection regexes against catastrophic
+  backtracking (ReDoS), with a standing screening test across all patterns.
+- The bundled tldr catalog is now integrity-checked at build/package time against a
+  pinned manifest.
+- The deep-analysis fetch connects to the validated, pinned IP (closing a
+  DNS-rebinding gap), and the dependency audit in CI now also covers the optional
+  AI SDKs.
+
 ## [0.4.5] — 2026-06-04
 
 ### Added
