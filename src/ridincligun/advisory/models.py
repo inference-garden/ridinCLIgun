@@ -44,12 +44,26 @@ class ReviewResult:
     - ``tldr_page``: tldr documentation for the command, if found.
     - ``typo_suggestion``: suggested correction when the command name is
       unrecognised and a close match exists (Levenshtein ≤ 2).
+
+    Offline-help refinement fields (v0.4.6, S4-5) — all optional and
+    back-compatible; populated only when a tldr page is resolved:
+    - ``matched_command``: the resolved variant key when the lookup narrowed
+      to a subcommand page (e.g. ``"git-commit"``), else ``None`` for the base
+      command.  Lets the UI show *which* variant is being shown.
+    - ``ranked_examples``: the page's examples reordered so the ones matching
+      the typed flags/words come first, paired with an ``is_match`` flag for
+      highlighting.  ``None`` when there is no page.
+    - ``flag_notes``: ``(flag_display, description)`` pairs explaining the typed
+      flags that the resolved page documents.  Empty/``None`` when nothing matches.
     """
 
     command: str
     warnings: list[Warning] = field(default_factory=list)
     tldr_page: TldrPage | None = field(default=None)
     typo_suggestion: str | None = field(default=None)
+    matched_command: str | None = field(default=None)
+    ranked_examples: list[tuple[TldrExample, bool]] | None = field(default=None)
+    flag_notes: list[tuple[str, str]] | None = field(default=None)
 
     @property
     def highest_risk(self) -> RiskLevel:

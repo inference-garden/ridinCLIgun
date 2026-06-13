@@ -159,6 +159,7 @@ class SettingsScreen(ModalScreen[str | None]):
     #settings-container {
         width: 55;
         max-height: 35;
+        overflow-y: auto;
         background: #1a1a2e;
         border: tall #44475a;
         padding: 1 2;

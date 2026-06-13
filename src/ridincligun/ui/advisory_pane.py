@@ -25,6 +25,13 @@ from ridincligun.i18n import t
 # Selection highlight style (same as shell pane for consistency)
 _SEL_STYLE = Style(color="white", bgcolor="#44475a")
 
+# Scroll indicator — 1-cell glyphs only (emoji cell-width bit the history
+# browser before; see v0.4 retro).  Track is dim, thumb is brighter.
+_SB_TRACK = "│"
+_SB_THUMB = "█"
+_SB_TRACK_STYLE = Style(color="#3a3f5a")
+_SB_THUMB_STYLE = Style(color="#a0a0c0")
+
 
 class AdvisoryPane(Widget, can_focus=True):
     """Right-side advisory panel. Placeholder for Step 1, enriched in Step 3."""
@@ -93,6 +100,9 @@ class AdvisoryPane(Widget, can_focus=True):
     def _rewrap(self) -> None:
         """Recompute wrapped lines from raw lines for current width."""
         width = self.size.width if self.size.width > 0 else 40
+        # Reserve the rightmost column for the scroll indicator so content is
+        # never clobbered; the column is simply blank when no scrollbar shows.
+        content_width = max(1, width - 1)
         self._wrapped_lines = []
         for text, style_str in self._raw_lines:
             if not text or text.isspace():
@@ -101,7 +111,7 @@ class AdvisoryPane(Widget, can_focus=True):
                 # Preserve leading indent
                 stripped = text.lstrip()
                 indent = text[: len(text) - len(stripped)]
-                wrap_width = max(10, width - len(indent))
+                wrap_width = max(10, content_width - len(indent))
                 wrapped = textwrap.wrap(stripped, width=wrap_width) or [""]
                 for wline in wrapped:
                     self._wrapped_lines.append((indent + wline, style_str))
@@ -207,36 +217,63 @@ class AdvisoryPane(Widget, can_focus=True):
 
     # ── Rendering ─────────────────────────────────────────────────
 
+    def _scrollbar_char(self, row: int) -> str | None:
+        """Return the scroll-indicator glyph for screen *row*, or None.
+
+        ``None`` means content fits and no indicator is drawn.  The thumb size
+        and position reflect the visible fraction and ``_scroll_offset``.
+        """
+        total = len(self._wrapped_lines)
+        height = self.size.height
+        if height <= 0 or total <= height:
+            return None
+        thumb = min(height, max(1, round(height * height / total)))
+        max_offset = total - height
+        travel = height - thumb
+        pos = round(self._scroll_offset / max_offset * travel) if max_offset > 0 else 0
+        return _SB_THUMB if pos <= row < pos + thumb else _SB_TRACK
+
     def render_line(self, y: int) -> Strip:
         """Render a single line of advisory content with scroll offset."""
         width = self.size.width
+        if width <= 0:
+            return Strip.blank(width, Style())
+
         has_sel = self.has_selection()
         line_idx = y + self._scroll_offset
+        sb = self._scrollbar_char(y)
+        # Reserve the last column for the scrollbar when active (content was
+        # already wrapped to leave it free in _rewrap).
+        content_width = width - 1 if sb is not None else width
 
         if line_idx < len(self._wrapped_lines):
             text, style_str = self._wrapped_lines[line_idx]
             base_style = Style.parse(style_str) if style_str else Style()
-            padded = text.ljust(width)[:width]
+        else:
+            text, base_style = "", Style()
+        padded = text.ljust(width)[:content_width]
 
-            if has_sel:
-                # Render character by character for selection highlight
-                segments: list[Segment] = []
-                current_text = ""
-                current_style: Style | None = None
+        if has_sel:
+            # Render character by character for selection highlight
+            segments: list[Segment] = []
+            current_text = ""
+            current_style: Style | None = None
+            for x in range(content_width):
+                ch = padded[x]
+                style = _SEL_STYLE if self._is_selected(line_idx, x) else base_style
+                if style == current_style:
+                    current_text += ch
+                else:
+                    if current_text:
+                        segments.append(Segment(current_text, current_style))
+                    current_text = ch
+                    current_style = style
+            if current_text:
+                segments.append(Segment(current_text, current_style))
+        else:
+            segments = [Segment(padded, base_style)]
 
-                for x, ch in enumerate(padded):
-                    style = _SEL_STYLE if self._is_selected(line_idx, x) else base_style
-                    if style == current_style:
-                        current_text += ch
-                    else:
-                        if current_text:
-                            segments.append(Segment(current_text, current_style))
-                        current_text = ch
-                        current_style = style
-                if current_text:
-                    segments.append(Segment(current_text, current_style))
-                return Strip(segments, width)
-            else:
-                return Strip([Segment(padded, base_style)], width)
-
-        return Strip.blank(width, Style())
+        if sb is not None:
+            sb_style = _SB_THUMB_STYLE if sb == _SB_THUMB else _SB_TRACK_STYLE
+            segments.append(Segment(sb, sb_style))
+        return Strip(segments, width)

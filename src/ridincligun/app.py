@@ -1454,12 +1454,31 @@ class RidinCLIgunApp(App):
             if result.warnings:
                 lines.append(("  ─────────────────────", "dim"))
                 lines.append(("", ""))
-            lines.append((f"  {page.command}", "bold cyan"))
+            # Header shows the matched variant ("git commit") so the refinement
+            # is visible.  Only a resolved subcommand is de-dashed — a native
+            # dash command (apt-get, aircrack-ng) keeps its name as-is.
+            header = (
+                result.matched_command.replace("-", " ") if result.matched_command else page.command
+            )
+            lines.append((f"  {header}", "bold cyan"))
             lines.append((f"  {page.description}", "dim"))
             lines.append(("", ""))
-            for ex in page.examples:
-                lines.append((f"  {ex.description}", "dim"))
-                lines.append((f"  {ex.command}", "cyan"))
+            # Ranked examples: matches (typed flags/args) float to the top and
+            # are highlighted; falls back to catalog order for direct callers.
+            examples = result.ranked_examples or [(ex, False) for ex in page.examples]
+            for ex, is_match in examples:
+                desc_style = "cyan" if is_match else "dim"
+                cmd_style = "bold cyan" if is_match else "cyan"
+                marker = "▸ " if is_match else "  "
+                lines.append((f"  {ex.description}", desc_style))
+                lines.append((f"  {marker}{ex.command}", cmd_style))
+                lines.append(("", ""))
+            # Flag-level detail: compact glossary for the typed flags.
+            if result.flag_notes:
+                lines.append(("  ─────────────────────", "dim"))
+                lines.append(("", ""))
+                for flag_disp, flag_desc in result.flag_notes:
+                    lines.append((f"  {flag_disp} — {flag_desc}", "dim"))
                 lines.append(("", ""))
 
         # ── Typo suggestion ───────────────────────────────────────

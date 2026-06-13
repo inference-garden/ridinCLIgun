@@ -12,6 +12,7 @@ Supports mouse-wheel scrollback through pyte HistoryScreen.
 from __future__ import annotations
 
 import asyncio
+import re
 
 import pyte
 from rich.segment import Segment
@@ -64,6 +65,22 @@ def _build_style(char: pyte.screens.Char) -> Style:
         underline=char.underscore or None,
         reverse=char.reverse or None,
     )
+
+
+# `exit ride` — the app-specific clean-exit verb (brand string, kept English in
+# every locale).  Matched exactly, never as a substring or prefix.
+_EXIT_RIDE = "exit ride"
+_WS_RE = re.compile(r"\s+")
+
+
+def _is_exit_ride(command: str) -> bool:
+    """True if *command* is exactly the ``exit ride`` quit verb.
+
+    Case-insensitive and inner-whitespace-normalized, but an **exact** match —
+    so ``exit ride && rm -rf /`` and a bare ``exit`` do not trigger.  Quoting
+    (``"exit ride"``) reaches the shell as one argument and also does not match.
+    """
+    return _WS_RE.sub(" ", command.strip()).lower() == _EXIT_RIDE
 
 
 class ShellPane(Widget, can_focus=True):
@@ -336,6 +353,18 @@ class ShellPane(Widget, can_focus=True):
                 self.app._show_advisory_welcome()
             event.stop()
             return
+
+        # ── exit ride — app-specific clean exit, intercepted before PTY ──
+        # On Enter, if the current input line is exactly `exit ride`, quit the
+        # app instead of forwarding the line to the shell.  Same exit path as
+        # the leader Quit action.
+        if event.key == "enter" and isinstance(self.app, RidinCLIgunApp):
+            if _is_exit_ride(extract_current_command(self._screen)):
+                event.stop()
+                self._pty.write(b"\x15")  # Ctrl+U: clear the input line, no \r
+                self.clear_selection()
+                self.app.action_quit()
+                return
 
         # Key-to-bytes mapping for shell-native special keys
         key_map: dict[str, bytes] = {
