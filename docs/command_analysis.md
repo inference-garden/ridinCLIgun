@@ -1,58 +1,38 @@
 # Command Analysis
 
-This document covers what ridinCLIgun checks, when it checks it, and what each layer covers. Data flow lives in `security.md`; prompt composition lives in `prompt_category_system.md`.
+What ridinCLIgun checks, when, and how deep it goes.
 
 ## Always-on local advisory
+Runs locally on every input change, no provider needed:
 
-These components run locally and do not require a provider:
+| Component | Trigger | Output |
+|-----------|---------|--------|
+| **Secret detection** | every input change, **runs first** | flags secret-bearing input; interrupts/gates AI review until the user confirms |
+| Risk pattern catalog | every keystroke | matched warnings from the command-family catalog |
+| tldr command catalog | every keystroke | description + examples |
+| Typo detector | unknown command name | nearest-command suggestion |
 
-| Component | Trigger | Current source | Output |
-|-----------|---------|----------------|--------|
-| Risk pattern catalog | every keystroke | 17 command families / 31 regex patterns | matched warnings |
-| tldr command catalog | every keystroke | bundled tldr-pages data | description + examples |
-| Typo detector | when command name is unknown | tldr commands + catalog + PATH scan | nearest command suggestion |
-
-The tldr bundle currently covers 6,615 commands.
-
-## Layered review flow
-
+## Layered review
 | Layer | Trigger | Network | What happens |
 |-------|---------|---------|--------------|
-| Local advisory | every keystroke | no | regex warnings, tldr lookup, typo detection |
-| Layer 2 AI review | user presses `F2` with AI enabled and provider configured | yes | current command is reviewed by the selected provider |
-| Layer 3 deep analysis | automatically after Layer 2 if a remote-execute pattern matched | yes | URL is fetched locally, then script content is sent for analysis |
+| Local advisory | every keystroke | no | the always-on components above |
+| **Layer 2 — AI review** | user presses `F2` (AI enabled, provider configured) | yes | the redacted command is reviewed by the provider; secrets/sensitive paths are redacted, structure preserved |
+| **Layer 3 — deep analysis** | automatic after Layer 2 when there's fetchable remote-execute evidence | yes | the remote script is fetched locally, then its content is analysed (never executed) |
 
-Layer 2 uses the matched warning families to resolve a prompt category before sending the command.
+## How deep it goes — the investigation-depth router
+After `F2` a review always runs.
+The app chooses **Fast vs Deep** automatically and decides whether Layer 3 runs, based on the value of deeper investigation — see `investigation_depth_router.md`. The user picks only the **provider**; the active model (Fast or Deep) is always shown.
 
-## Layer 3 trigger rules
 
-Layer 3 currently activates for these command shapes:
+## Layer 3 fetch — limits and safety
+| Property | Value |
+|----------|-------|
+| Allowed schemes | **`https` only** — `http` and all others rejected before any network call |
+| SSRF guard | every resolved IP checked; private/loopback/link-local/reserved blocked |
+| Redirects | re-validated per hop (scheme + IP) before following |
+| Pre-fetch gate | blocked while Secret Mode would expose secrets |
+| Max fetch | 1 MB · timeout 15 s · **execution: never** (read-only) |
 
-| Pattern | Example |
-|---------|---------|
-| pipe to shell | `curl https://example.com/install.sh | bash` |
-| pipe to shell via `wget` | `wget -qO- https://example.com/setup | sh` |
-| download then execute same file | `curl -o script.sh https://example.com/s.sh && bash script.sh` |
-| fallback URL + shell pipe | any command containing both an `http(s)://...` URL and `| bash`, `| sh`, `| zsh`, or `| dash` |
-
-The explicit download-and-execute matcher also recognizes `source script.sh`.
-
-## Layer 3 fetch and fit limits
-
-| Limit | Current value | Effect |
-|-------|---------------|--------|
-| max fetch size | 1,048,576 bytes | content above 1 MB is cut locally |
-| fetch timeout | 15 seconds | slow or hanging fetches abort |
-| allowed schemes | `http`, `https` | other schemes are rejected |
-| execution | never | content is read only |
-| context fitting | model-dependent | fetched script may be truncated again before provider send |
-
-## What the layers do not cover
-
-- no shell AST or semantic shell parsing
-- no analysis across separate commands or sessions
-- no deep analysis for plain downloads that are not executed in the same command
-- no deep analysis for heredocs, stdin-fed content, or shell builtins such as `source` unless matched by the download-and-execute regex
-- no authenticated fetch flow for login-walled scripts
-- no guarantee against novel credential formats or obfuscated shell tricks
-
+## What it does not cover
+No shell AST / semantic parsing. No analysis across separate commands or sessions. No deep analysis
+for plain downloads that aren't executed in the same command.

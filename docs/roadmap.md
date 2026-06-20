@@ -22,17 +22,30 @@ CI pipeline, security hardening.
 - Explorer mode — gentler tone for beginners and kids
 
 **Better experience:**
-- History browser (`Ctrl+G, K`) — browse, search, and revisit past AI reviews
+- History browser (`Ctrl+G, H`) — browse, search, and revisit past AI reviews
 - Full UI in English, German, or French
-- Provider/model switching persists across restarts
-- Provider and model configurable directly from the Settings screen
+- Provider and model selection, configurable from Settings and persistent across restarts
 
-## v0.4.5 — "This tool is genuinely useful." ✅ shipped 2026-06-04
+## v0.4.5 — "Pop the bottle. Homebrew is here." ✅ shipped 2026-06-04
 
-**Easy Install:**
-- Homebrew tap installation is live on macOS.
-- brew tap inference-garden/ridincligun and
-- brew install ridincligun now get the helper onto your machine without the old source detour. Small release, real milestone, fully worth a little confetti.
+Homebrew tap installation is live on macOS. `brew tap inference-garden/ridincligun` and
+`brew install ridincligun` now get the helper onto your machine without the old source
+detour. Small release, real milestone, fully worth a little confetti.
+
+## v0.4.6 — "This tool listens more closely." ✅ shipped 2026-06-13
+
+Variant-aware offline help: subcommand resolution, deterministic example ranking, and
+per-flag notes make the advisory pane follow the command you are actually typing. Plus a
+faster install via prebuilt Homebrew bottles, `exit ride` to quit cleanly from the prompt,
+and an advisory scroll indicator. Still local, more flexible and fast.
+
+## v0.4.7 — "This tool knows when to look deeper." ✅ shipped 2026-06-20
+
+Provider-only selection plus an automatic investigation-depth router. You pick a provider
+you trust; the app decides **Fast vs Deep** per command and whether to fetch a remote
+script — on cheap local signals — and always shows which model is answering. Trivial
+commands get a fast review; risky or complex local commands get the deep model; a
+remote-execute script is fetched and deeply analysed only when that adds real insight.
 
 ## v0.5 — "This tool thinks with me." (planned)
 
@@ -44,7 +57,7 @@ follow up in plain language without leaving the terminal.
 - **Approval tiers** — safe commands auto-dismiss, dangerous ones persist until you acknowledge
 - **Per-command context** — inject working directory, git branch, and recent history into AI prompts for smarter, more relevant answers
 - **Session memory** — AI knows what you've already run this session; avoids repeating itself
-- **Scrollbar indicators** in advisory and shell panes
+- **Native copy/paste & mouse model** — settle the terminal-vs-TUI selection/clipboard shape (incl. native `Cmd+C`)
 - **Cost awareness** — running token count so you know what you're spending
 
 Deferred from v0.4: approval tiers, streaming, per-command context, local AI review cache.

@@ -4,6 +4,35 @@ All notable changes to ridinCLIgun are documented here. Dates are ISO 8601.
 This project follows [Semantic Versioning](https://semver.org/) loosely while in the
 v0.x line. The advisory layer is always local-first; an AI backend is optional.
 
+## [0.4.7] — 2026-06-20
+
+### Changed
+- **Automatic model selection via an investigation-depth router.** You now pick only a
+  provider you trust; ridinCLIgun chooses a **Fast** or **Deep** model per command from
+  cheap, local, deterministic signals and always shows which model is answering. Trivial
+  commands get a fast review; risky or complex local commands get the deep model; a
+  remote-execute script is fetched and deeply analysed only when that adds real insight.
+  The six-option model menu is replaced by a three-provider selector that shows each
+  provider's Fast and Deep models.
+- **Configuration is now provider-only.** A leftover `model` value in an existing
+  `config.toml` is read and silently ignored — no migration needed.
+- **Deep analysis (Layer 3) now runs on the provider's Deep model explicitly**, and the
+  active tier and model are recorded in the review history.
+
+### Added
+- A single local "command facts" pass — severity, trust-boundary and complexity signals,
+  fetchable-evidence detection, and prompt category — is the one source of truth behind
+  the router, the Layer 3 trigger, and prompt categorisation, removing drift between them.
+  Behaviour is pinned by corpus and threshold tests.
+- Documentation: a new **Investigation-Depth Router** page, and refreshed **Configuration**,
+  **Command Analysis**, and **Prompt Category System** docs (the last now lists the verbatim
+  prompts sent to the provider).
+
+### Fixed
+- A malformed `config.toml` now fails with one clear message (file and line) and a
+  non-zero exit instead of a raw traceback — failing closed, never silently falling back
+  to defaults.
+
 ## [0.4.6] — 2026-06-13
 
 ### Added
@@ -101,6 +130,8 @@ v0.x line. The advisory layer is always local-first; an AI backend is optional.
   install scripts.
 - Provider/model selection with persistence.
 
+[0.4.7]: https://github.com/inference-garden/ridinCLIgun/releases/tag/v0.4.7
+[0.4.6]: https://github.com/inference-garden/ridinCLIgun/releases/tag/v0.4.6
 [0.4.5]: https://github.com/inference-garden/ridinCLIgun/releases/tag/v0.4.5
 [0.4.4]: https://github.com/inference-garden/ridinCLIgun/releases/tag/v0.4.4
 [0.4.3]: https://github.com/inference-garden/ridinCLIgun/releases/tag/v0.4.3

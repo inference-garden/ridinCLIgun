@@ -6,7 +6,7 @@
 
 ridinCLIgun splits your terminal in two: a **real shell** on the left, an **advisory pane** on the right. Type anything — it watches in real time, warns you before you run something you'll regret, and shows you what the command actually does.
 
-The advisory pane already knows **6,600+ commands offline**. It shows examples, explains common usage, and catches typos without any API key.
+The advisory pane already knows **6,600+ commands offline**. It shows examples, explains common usage, it is variant-aware and catches typos **quickly and locally**.
 
 Add an AI backend and it goes further: review risky commands, inspect `curl | bash`-style install flows, and suggest safer alternatives — in your language.
 
@@ -24,6 +24,7 @@ Add an AI backend and it goes further: review risky commands, inspect `curl | ba
 **With AI enabled (opt-in, explicit trigger):**
 
 - **AI command review** — ask Claude, GPT, or Mistral to review what you're about to run
+- **Automatic depth** — the app picks a fast or deep model per command, and only fetches a remote script when that genuinely adds insight; the active model is always shown
 - **Deep script analysis** — fetches and analyzes remote scripts from `curl | bash`-style patterns
 - **AI suggestions** — safer alternatives you can insert directly into the shell
 
@@ -38,7 +39,7 @@ Add an AI backend and it goes further: review risky commands, inspect `curl | ba
 - **Multi-language UI** — English, German, or French
 - **History browser** — browse, search, and learn from past AI reviews
 - **Settings menu** — configure AI, privacy, provider, and language from inside the app
-- **Provider switching** — Anthropic, OpenAI, Mistral; the choice persists across restarts
+- **Provider selection** — Anthropic, OpenAI, or Mistral; the app picks Fast vs Deep automatically and always shows the active model. Your provider choice persists across restarts
 - **Explorer mode** — gentler tone for beginners and kids
 
 ## What It Looks Like
@@ -59,7 +60,7 @@ Add an AI backend and it goes further: review risky commands, inspect `curl | ba
 
 ridinCLIgun started as a first coding project after many years away from code. Much of it has been built in a deliberately AI-assisted, vibe-coded way as part of learning how modern tool-driven development actually works.
 
-The terminal is where a lot of real learning happens: shells, scripts, package managers, LLM tooling, multi-agent workflows. But it is also where many people stop because it feels hostile, unforgiving, and one typo away from damage.
+The terminal is where a lot of real learning happens: shells, scripts, package managers, LLM tooling, multi-agent workflows. But it is also where many people stop because it feels hostile, unforgiving, and one typo away from causing damage.
 
 This project exists because the terminal should not be a gatekeeper. If you're curious enough to open one, you deserve a companion that helps you learn safely without taking control away from you.
 
@@ -150,10 +151,13 @@ echo "OPENAI_API_KEY=your-key" >> ~/.config/ridincligun/.env
 
 Or enter keys from inside the app through Settings.
 
+You pick a **provider** — the app then chooses a Fast or Deep model per command
+automatically and always shows which model is answering. There is no model id to set.
+
 Useful controls:
 
 - `F4` — toggle AI on/off
-- `Ctrl+G, M` — switch provider/model
+- `Ctrl+G, M` — switch provider
 - `Ctrl+G, G` — open settings
 - `Ctrl+G, C` / `Ctrl+G, V` — copy selection / paste (scanned for secrets first)
 
@@ -171,7 +175,7 @@ Frequent actions live on function keys. Modal actions use `Ctrl+G` as a leader k
 | `F9` | Give more space to the advisory pane |
 | `F10` | Give more space to the shell pane |
 | `Ctrl+G, H` | Open review history |
-| `Ctrl+G, M` | Switch provider/model |
+| `Ctrl+G, M` | Switch provider |
 | `Ctrl+G, G` | Open settings |
 | `Ctrl+G, C` | Copy the current selection to the clipboard |
 | `Ctrl+G, V` | Paste — scanned for secrets, with confirmation before it reaches the shell |
@@ -180,9 +184,11 @@ Frequent actions live on function keys. Modal actions use `Ctrl+G` as a leader k
 
 ## Status
 
-**v0.4.5** — current line. macOS, Python 3.12+.
+**v0.4.7** — current line. macOS, Python 3.12+.
 
-Homebrew install landed in v0.4.5; the next steps in the v0.4.x line are polish and Linux support — not a new product direction.
+v0.4.7 added provider-only selection with an automatic investigation-depth router: you pick
+a provider, the app picks Fast vs Deep per command and always shows the active model. The
+next steps in the v0.4.x line are polish and Linux support.
 
 ## Config
 
@@ -196,13 +202,14 @@ Full details: [Configuration](docs/configuration.md)
 
 ## Documentation
 
-| Document | What it covers |
-|----------|----------------|
-| [Security Model](docs/security.md) | Data flow, local storage, controls, and known limits |
-| [Command Analysis](docs/command_analysis.md) | What is checked locally, what triggers AI review, and Layer 3 coverage |
-| [Configuration](docs/configuration.md) | Config files, settings, persistence, and provider/model presets |
-| [Prompt Category System](docs/prompt_category_system.md) | How Layer 2 prompt composition works today |
-| [Roadmap](docs/roadmap.md) | Public direction of the project |
+| Document                                                         | What it covers                                                                         |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [Security Model](docs/security.md)                               | Data flow, local storage, controls, and known limits                                   |
+| [Command Analysis](docs/command_analysis.md)                     | What is checked locally, what triggers AI review, and Layer 3 coverage                 |
+| [Investigation-Depth Router](docs/investigation_depth_router.md) | How the app auto-selects Fast vs Deep and decides when to fetch remote evidence        |
+| [Configuration](docs/configuration.md)                           | Config files, settings, persistence, and provider-only selection                       |
+| [Prompt Category System](docs/prompt_category_system.md)         | Layer 2 prompt composition, the Layer 3 deep-analysis prompt, and the verbatim prompts |
+| [Roadmap](docs/roadmap.md)                                       | Direction of the project                                                               |
 
 ## Development
 

@@ -12,7 +12,7 @@ This document covers data flow, trust boundaries, local storage, controls, and k
 
 | Flow | Trigger | What leaves the machine | What does not |
 |------|---------|-------------------------|---------------|
-| Provider validation | AI is toggled on with `F4`, or a provider/model switch completes while a valid key is already available | a minimal review request for `echo test` | current shell command, shell history, file contents, environment variables |
+| Provider validation | AI is toggled on with `F4`, or a provider switch completes while a valid key is already available | a minimal review request for `echo test` | current shell command, shell history, file contents, environment variables |
 | Layer 2 AI review | AI is enabled, a provider is configured, and the user presses `F2` | composed Layer 2 system prompt, current command after privacy redaction, locale instruction when active language is not English | file contents, shell history, shell output / scrollback, review history, environment variables |
 | Layer 3 deep analysis | after Layer 2, when the reviewed command matches a remote-execute pattern such as `curl ... | bash` | fetched download URL, fetched script content, possible truncation warning, locale instruction when active language is not English | fetched content is never executed by ridinCLIgun |
 
