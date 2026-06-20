@@ -44,3 +44,28 @@ def test_version_flag_does_not_build_the_tui(monkeypatch):
         main()
 
     assert exc.value.code == 0
+
+
+def test_malformed_config_exits_one_with_clean_message(capsys, monkeypatch):
+    """A broken config.toml makes main() print one stderr line and exit 1 —
+    not dump a raw traceback."""
+    from ridincligun.config import ConfigError
+
+    monkeypatch.setattr(sys, "argv", ["ridincligun"])
+
+    def _raise(*_args, **_kwargs):
+        raise ConfigError(
+            "Invalid config file /x/config.toml: Cannot declare ('provider',) twice "
+            "(at line 19, column 10). Fix it, or delete the file to regenerate defaults."
+        )
+
+    monkeypatch.setattr(entry, "RidinCLIgunApp", _raise)
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "ridincligun:" in captured.err
+    assert "config.toml" in captured.err
+    assert captured.out == ""  # nothing on stdout

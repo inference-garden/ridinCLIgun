@@ -115,13 +115,17 @@ def test_settings_toggle_redaction_preview(settings_config):
     assert "show_redaction_preview = false" in text
 
 
-def test_settings_provider_model_are_action_items(settings_config):
-    """Provider and model items should be 'action' type (navigable, Enter opens model selector)."""
+def test_settings_provider_is_action_item(settings_config):
+    """The provider item is an 'action' type (Enter opens the provider selector).
+
+    Provider-only: there is no separate 'model' row any more — Fast/Deep are chosen
+    automatically per command, so the model id is not a user-set field in Settings.
+    """
     screen = SettingsScreen(settings_config)
     action_items = [i for i in screen._items if i["type"] == "action"]
     keys = {i["key"] for i in action_items}
     assert "provider_kind" in keys
-    assert "model" in keys
+    assert "model" not in keys
 
 
 def test_settings_action_items_have_model_select_action(settings_config):

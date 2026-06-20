@@ -21,6 +21,16 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 
+class ConfigError(Exception):
+    """Raised when config.toml exists but cannot be parsed.
+
+    Carries a clean, actionable, secret-free message (config.toml holds no
+    credentials — those live in .env). The entry point shows it verbatim and
+    exits, rather than dumping a raw traceback. We fail closed — a broken config
+    is never silently replaced by defaults.
+    """
+
+
 def _default_config_dir() -> Path:
     """Return the default config directory."""
     return Path.home() / ".config" / "ridincligun"
@@ -28,10 +38,15 @@ def _default_config_dir() -> Path:
 
 @dataclass
 class ProviderSettings:
-    """Settings for a specific AI provider."""
+    """Settings for the chosen AI provider.
+
+    Provider-only: the user picks a provider and the app maps it to a Fast and a Deep
+    model via the registry (``provider/registry.py``). There is no per-model field — a
+    legacy ``model`` key in an existing config.toml is read and silently ignored (no
+    migration), and the provider-only form is persisted going forward.
+    """
 
     kind: str = "anthropic"
-    model: str = "claude-sonnet-4-6"
     timeout_seconds: float = 15.0
     max_tokens: int = 1024
 
@@ -115,7 +130,7 @@ def _ensure_config_dir(config_dir: Path) -> None:
             "\n"
             "[provider]\n"
             'kind = "anthropic"  # "anthropic", "openai", or "mistral"\n'
-            'model = "claude-sonnet-4-6"\n'
+            "# Fast/Deep models are chosen automatically per command — no model id to set.\n"
             "timeout_seconds = 10.0\n"
             "max_tokens = 1024\n"
             "\n"
@@ -150,8 +165,16 @@ def load_config(config_dir: Path | None = None) -> Config:
     config_file = config_dir / "config.toml"
 
     if config_file.exists():
-        with open(config_file, "rb") as f:
-            data = tomllib.load(f)
+        try:
+            with open(config_file, "rb") as f:
+                data = tomllib.load(f)
+        except tomllib.TOMLDecodeError as e:
+            # Fail closed with a clear, actionable message (the error already names
+            # the line/column). Never fall back to defaults silently.
+            raise ConfigError(
+                f"Invalid config file {config_file}: {e}. "
+                "Fix it, or delete the file to regenerate defaults."
+            ) from e
 
         # General settings
         general = data.get("general", {})
@@ -166,12 +189,12 @@ def load_config(config_dir: Path | None = None) -> Config:
         if "language" in general:
             config.language = str(general["language"]).lower()
 
-        # Provider settings
+        # Provider settings. A legacy ``model`` key is intentionally NOT read — provider
+        # selection is provider-only now; any vestigial model id is silently ignored.
         provider_data = data.get("provider", {})
         if provider_data:
             config.provider = ProviderSettings(
                 kind=provider_data.get("kind", config.provider.kind),
-                model=provider_data.get("model", config.provider.model),
                 timeout_seconds=float(
                     provider_data.get("timeout_seconds", config.provider.timeout_seconds)
                 ),
@@ -241,11 +264,12 @@ def save_split_ratio(config: Config, ratio: tuple[int, int]) -> None:
         pass  # Non-critical — ratio resets to default next launch
 
 
-def save_provider_config(config: Config, kind: str, model: str) -> None:
-    """Persist provider kind and model to config.toml.
+def save_provider_config(config: Config, kind: str) -> None:
+    """Persist the provider kind to config.toml.
 
-    Updates the [provider] kind and model values in-place.
-    Fails silently on I/O errors — the in-session switch remains active.
+    Provider-only: updates the [provider] ``kind`` value in-place and leaves any
+    vestigial ``model`` line untouched (it is ignored on load). Fails silently on I/O
+    errors — the in-session switch remains active.
     """
     import re as _re
 
@@ -260,14 +284,6 @@ def save_provider_config(config: Config, kind: str, model: str) -> None:
             text = _re.sub(
                 r'^kind\s*=\s*"[^"]*"',
                 f'kind = "{kind}"',
-                text,
-                count=1,
-                flags=_re.MULTILINE,
-            )
-        if _re.search(r"^model\s*=", text, _re.MULTILINE):
-            text = _re.sub(
-                r'^model\s*=\s*"[^"]*"',
-                f'model = "{model}"',
                 text,
                 count=1,
                 flags=_re.MULTILINE,

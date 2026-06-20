@@ -130,7 +130,7 @@ inserted = "Eingefügt: {suggestion}\n\nVor dem Ausführen prüfen."
 # ── Model selector ──────────────────────────────────────────────
 
 [model]
-title = "🔧 Modellauswahl"
+title = "🔧 Anbieterauswahl"
 current = "Aktuell: {current}"
 select_hint = "1-{count} eingeben zur Auswahl."
 cancel_hint = "Andere Taste zum Abbrechen."
@@ -142,6 +142,12 @@ add_key = "{key_name} hinzufügen zu"
 env_path = "~/.config/ridincligun/.env"
 restart = "und neu starten."
 checking = "Verbindung wird geprüft..."
+
+[router]
+# Untersuchungstiefe-Stufen, mit dem aktiven Modell bei jeder Prüfung angezeigt.
+tier_fast = "Schnell"
+tier_deep = "Tief"
+active = "{tier} · {model}"
 
 # ── Deep analysis ───────────────────────────────────────────────
 
@@ -185,14 +191,13 @@ section_keys = "Verfügbare API-Keys"
 section_general = "Allgemein"
 ai_enabled = "KI beim Start aktiviert"
 provider_label = "Anbieter: {provider}"
-model_label = "Modell: {model}"
 review_mode_label = "Prüfmodus: {mode}"
 redaction_preview = "Schwärzungsvorschau vor KI-Prüfung anzeigen"
 clipboard_safety = "Vor dem Einfügen von Geheimnissen warnen"
 key_configured = "konfiguriert (...{suffix})"
 key_from_env = "aus Umgebung (...{suffix})"
 key_not_configured = "nicht konfiguriert"
-hint = "↑↓ navigieren  Leertaste umschalten  Enter bearbeiten/auswählen\n  ↵ bei Anbieter/Modell: Modellauswahl öffnen\n\n  ESC zum Beenden"
+hint = "↑↓ navigieren  Leertaste umschalten  Enter bearbeiten/auswählen\n  ↵ bei Anbieter: Anbieterauswahl öffnen\n\n  ESC zum Beenden"
 key_input_title = "API key eingeben für {provider}"
 key_input_placeholder = "API key hier einfügen..."
 key_input_hint = "Enter zum Speichern  Escape zum Abbrechen"

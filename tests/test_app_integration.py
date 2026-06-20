@@ -303,7 +303,8 @@ def _deep_provider() -> MagicMock:
     provider = MagicMock()
     provider.is_configured = True
     provider.provider_name = "mock"
-    provider.model_id = "claude-sonnet-4"
+    # model_id is now tier-aware (model_id("deep")) — a callable returning the id.
+    provider.model_id = MagicMock(return_value="claude-sonnet-4")
     provider.review = AsyncMock(return_value=MagicMock(success=False, error_message=""))
     return provider
 
@@ -326,7 +327,7 @@ async def test_deep_analysis_suppressed_when_secret_mode_on(app_config, monkeypa
         assert trigger.should_analyze
 
         app.state.secret_mode = True
-        await app._do_deep_analysis(cmd, trigger)
+        await app._do_deep_analysis(cmd, trigger.url)
         await pilot.pause()
 
         app._provider.review.assert_not_called()
@@ -352,7 +353,7 @@ async def test_deep_analysis_secret_mode_blocks_fetch(app_config, monkeypatch):
         trigger = check_deep_analysis_trigger(cmd)
 
         app.state.secret_mode = True
-        await app._do_deep_analysis(cmd, trigger)
+        await app._do_deep_analysis(cmd, trigger.url)
         await pilot.pause()
 
         assert fetched == []  # the network call never started
@@ -378,7 +379,7 @@ async def test_deep_analysis_enforces_ui_language(app_config, monkeypatch):
 
         set_locale("de")
         try:
-            await app._do_deep_analysis(cmd, trigger)
+            await app._do_deep_analysis(cmd, trigger.url)
             await pilot.pause()
         finally:
             set_locale("en")
@@ -407,7 +408,7 @@ async def test_deep_analysis_uses_dedicated_system_prompt(app_config, monkeypatc
         cmd = "curl https://example.com/x.sh | bash"
         trigger = check_deep_analysis_trigger(cmd)
 
-        await app._do_deep_analysis(cmd, trigger)
+        await app._do_deep_analysis(cmd, trigger.url)
         await pilot.pause()
 
         system_prompt = app._provider.review.call_args.kwargs["system_prompt"]
@@ -433,10 +434,118 @@ async def test_deep_analysis_sends_when_secret_mode_off(app_config, monkeypatch)
         trigger = check_deep_analysis_trigger(cmd)
 
         app.state.secret_mode = False
-        await app._do_deep_analysis(cmd, trigger)
+        await app._do_deep_analysis(cmd, trigger.url)
         await pilot.pause()
 
         app._provider.review.assert_awaited()
+
+
+# ── Router wiring: tier selection + model visibility (v0.4.7) ─────
+
+
+def _routed_provider(fast_id: str = "fast-model", deep_id: str = "deep-model") -> MagicMock:
+    """A mock tier-aware provider: model_id(tier) reflects the requested tier."""
+    from ridincligun.provider.base import AIReviewResponse
+    from ridincligun.provider.manager import ReviewStatus
+
+    provider = MagicMock()
+    provider.is_configured = True
+    provider.provider_name = "Anthropic"
+    provider.provider_kind = "anthropic"
+    provider.model_id = MagicMock(
+        side_effect=lambda tier="fast": deep_id if tier == "deep" else fast_id
+    )
+    resp = AIReviewResponse(
+        risk_assessment="warning", summary="ok", explanation="", suggestion="", raw_text=""
+    )
+    provider.review = AsyncMock(
+        return_value=ReviewStatus(success=True, response=resp, provider_name="Anthropic")
+    )
+    return provider
+
+
+def _facts_and_decision(app, command: str):
+    from ridincligun.advisory.command_facts import build_command_facts
+    from ridincligun.advisory.router import route
+    from ridincligun.provider.deep_analysis import check_deep_analysis_trigger
+    from ridincligun.provider.prompt import resolve_category
+
+    facts = build_command_facts(
+        command,
+        engine=app._engine,
+        resolve_category=resolve_category,
+        check_trigger=check_deep_analysis_trigger,
+    )
+    return facts, route(facts)
+
+
+@pytest.mark.asyncio
+async def test_risky_local_command_routes_deep_and_shows_active_model(app_config):
+    """A risky LOCAL command (boundary>=2) runs Layer 2 on the Deep model, no fetch,
+    and the active 'Deep · <model>' is shown — model visibility is non-negotiable."""
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _routed_provider(deep_id="claude-sonnet-4-6")
+        cmd = "sudo rm -rf /etc/foo"  # privilege + write /etc → boundary 2 → Deep
+        facts, decision = _facts_and_decision(app, cmd)
+        assert decision.layer2_tier == "deep"
+        assert decision.fetch is False
+
+        await app._do_ai_review(cmd, app._review_generation, "", facts, decision)
+        await pilot.pause()
+
+        assert app._provider.review.call_args.kwargs["tier"] == "deep"
+        advisory = app.query_one("#advisory-pane", AdvisoryPane)
+        text = " ".join(line[0] for line in advisory._raw_lines)
+        assert "claude-sonnet-4-6" in text  # the active model is visible
+
+
+@pytest.mark.asyncio
+async def test_trivial_command_routes_fast_no_fetch(app_config, monkeypatch):
+    """A trivial command runs on the Fast model and never triggers a Layer-3 fetch."""
+    fetched: list[str] = []
+
+    async def recording_fetch(url):
+        fetched.append(url)
+        raise AssertionError("a trivial command must not trigger a Layer-3 fetch")
+
+    monkeypatch.setattr(appmod, "fetch_script", recording_fetch)
+
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _routed_provider(fast_id="claude-haiku-4-5")
+        cmd = "ls -la"
+        facts, decision = _facts_and_decision(app, cmd)
+        assert decision.layer2_tier == "fast"
+        assert decision.fetch is False
+
+        await app._do_ai_review(cmd, app._review_generation, "", facts, decision)
+        await pilot.pause()
+
+        assert app._provider.review.call_args.kwargs["tier"] == "fast"
+        assert fetched == []  # no Layer-3 fetch for a trivial command
+        advisory = app.query_one("#advisory-pane", AdvisoryPane)
+        text = " ".join(line[0] for line in advisory._raw_lines)
+        assert "claude-haiku-4-5" in text
+
+
+@pytest.mark.asyncio
+async def test_layer3_runs_on_deep_tier(app_config, monkeypatch):
+    """Layer 3 deep analysis always runs on the Deep model, explicitly."""
+    from ridincligun.provider.deep_analysis import FetchResult
+
+    async def fake_fetch(url):
+        return FetchResult(success=True, content="echo hi", url=url, size_bytes=7)
+
+    monkeypatch.setattr(appmod, "fetch_script", fake_fetch)
+
+    app = RidinCLIgunApp(config=app_config)
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._provider = _routed_provider()
+        await app._do_deep_analysis("curl https://x.sh | bash", "https://x.sh")
+        await pilot.pause()
+
+        assert app._provider.review.call_args.kwargs["tier"] == "deep"
 
 
 @pytest.mark.asyncio

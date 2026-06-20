@@ -19,8 +19,10 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal
 from textual.css.query import NoMatches
 
+from ridincligun.advisory.command_facts import CommandFacts, build_command_facts
 from ridincligun.advisory.engine import AdvisoryEngine
 from ridincligun.advisory.models import RiskLevel
+from ridincligun.advisory.router import DEEP, FAST, RoutingDecision, route
 from ridincligun.advisory.secret_detector import detect_secrets
 from ridincligun.config import Config, load_config, save_split_ratio
 from ridincligun.history import HistoryEntry, ReviewHistory, now_iso
@@ -477,34 +479,48 @@ class RidinCLIgunApp(App):
         # Increment generation so stale responses are discarded
         self._review_generation += 1
 
-        # Resolve prompt category from local engine's matched families
-        result = self._engine.analyze(command, locale=get_locale())
-        family_ids = [w.family for w in result.warnings]
-        category = resolve_category(family_ids)
-        system_prompt = build_system_prompt(category, self.config.review_mode, get_locale())
+        # One local pass → all the facts the router needs. CommandFacts is the single
+        # source of truth (category resolved once here, reused by the Layer-3 trigger),
+        # so there is no Layer-2 catalog / Layer-3 regex drift.
+        facts = build_command_facts(
+            command,
+            engine=self._engine,
+            resolve_category=resolve_category,
+            check_trigger=check_deep_analysis_trigger,
+            locale=get_locale(),
+        )
+        decision = route(facts)
+        system_prompt = build_system_prompt(facts.category, self.config.review_mode, get_locale())
 
-        # Show loading state and clear any previous error status
+        # Show loading state and clear any previous error status. The active model
+        # (tier + id) is always shown — no silent substitution.
         self.state.phase = Phase.REVIEW_LOADING
         self._update_ai_status("")
         self._show_advisory_notice(
             f"{t('review.loading', command=command)}\n\n"
-            f"{t('review.asking', provider=self._provider.provider_name)}"
+            f"{t('review.asking', provider=self._provider.provider_name)}\n"
+            f"  {self._active_model_label(decision.layer2_tier)}"
         )
 
         # Launch async review with current generation
         gen = self._review_generation
-        self._review_task = asyncio.create_task(self._do_ai_review(command, gen, system_prompt))
+        self._review_task = asyncio.create_task(
+            self._do_ai_review(command, gen, system_prompt, facts, decision)
+        )
 
     async def _do_ai_review(
         self,
         command: str,
         generation: int = 0,
         system_prompt: str = "",
+        facts: CommandFacts | None = None,
+        decision: RoutingDecision | None = None,
     ) -> None:
         """Perform the AI review asynchronously (Layer 2).
 
-        After showing the review, checks if the command triggers deep
-        analysis (Layer 3) and starts it automatically.
+        Runs on the router-chosen tier (Fast/Deep). If the router decided to fetch,
+        Layer 3 runs on the Deep model with the evidence URL the one CommandFacts pass
+        already found — no re-trigger, so the L2/L3 decision shares one source.
 
         Args:
             generation: Review generation counter at launch time.
@@ -513,11 +529,15 @@ class RidinCLIgunApp(App):
                         (secret mode was toggled or a new review started)
                         and must be discarded without rendering.
             system_prompt: Composed system prompt (base + category + mode).
+            facts: The CommandFacts for this command (carries the evidence URL).
+            decision: The routing decision (tier + fetch). Absent → Fast floor.
         """
+        tier = decision.layer2_tier if decision else FAST
         result = await self._provider.review(
             command,
             context=build_locale_context(get_locale()),
             system_prompt=system_prompt,
+            tier=tier,
         )
 
         # Defense in depth: suppress result if generation changed
@@ -531,21 +551,23 @@ class RidinCLIgunApp(App):
         if result.success and result.response:
             self._last_ai_failed = False
             self._update_ai_status("")
-            self._show_ai_review(command, result.response)
+            self._show_ai_review(command, result.response, tier)
 
-            # Check for Layer 3: deep analysis of remote scripts
-            trigger = check_deep_analysis_trigger(command)
-            if trigger.should_analyze:
-                asyncio.create_task(self._do_deep_analysis(command, trigger))
+            # Layer 3: deep analysis of fetchable remote scripts. Both the decision and
+            # the URL come from the single CommandFacts pass — no separate re-trigger.
+            if decision and decision.fetch and facts and facts.evidence_url:
+                asyncio.create_task(self._do_deep_analysis(command, facts.evidence_url))
         else:
             self._last_ai_failed = True
             self._update_ai_status("offline")
             self._show_connection_error(result.error_message)
 
-    async def _do_deep_analysis(self, command: str, trigger) -> None:
-        """Layer 3: fetch and analyze a remote script.
+    async def _do_deep_analysis(self, command: str, url: str) -> None:
+        """Layer 3: fetch and analyze a remote script (always on the Deep model).
 
-        Appends results to the existing AI review in the advisory pane.
+        ``url`` is the fetchable evidence URL the single CommandFacts pass found, so
+        Layer 3 reuses it rather than re-deriving a trigger. Appends results to the
+        existing AI review in the advisory pane.
         """
         # Pre-fetch secret-mode gate (B-S09): if secret mode is on, make NO
         # outbound request at all. Checked before the fetch — not just before the
@@ -558,12 +580,12 @@ class RidinCLIgunApp(App):
             [
                 ("", ""),
                 (f"  {t('deep.fetching')}", "bold cyan"),
-                (f"  {trigger.url}", "dim"),
+                (f"  {url}", "dim"),
             ]
         )
 
         # Fetch the script
-        result = await fetch_script(trigger.url)
+        result = await fetch_script(url)
 
         # Remove "fetching" status line
         self._remove_advisory_lines(t("deep.fetching"))
@@ -584,8 +606,8 @@ class RidinCLIgunApp(App):
             )
             return
 
-        # Fit script to model's context window
-        model_name = self._provider.model_id if self._provider else ""
+        # Fit script to the Deep model's context window (Layer 3 runs on Deep).
+        model_name = self._provider.model_id(DEEP) if self._provider else ""
         content, was_truncated = fit_script_to_context(
             result.content,
             model_name,
@@ -610,7 +632,7 @@ class RidinCLIgunApp(App):
 
         # Build deep analysis prompt and send to provider
         prompt = build_deep_analysis_prompt(
-            trigger.url,
+            url,
             content,
             was_truncated,
             locale=get_locale(),
@@ -621,12 +643,14 @@ class RidinCLIgunApp(App):
         # as in Layer 2: a locale-bearing system prompt PLUS the locale
         # instruction in the user turn — without it, weaker models (Mistral
         # Small, Claude Haiku) answered in English even in DE/FR (B-014).
+        # Layer 3 always runs on the Deep model (the router fetched it deliberately).
         analysis = await self._provider.review(
             prompt,
             context=build_locale_context(get_locale()),
             system_prompt=build_deep_analysis_system_prompt(
                 locale=get_locale(), mode=self.config.review_mode
             ),
+            tier=DEEP,
         )
 
         # Remove "analyzing" status line
@@ -680,7 +704,7 @@ class RidinCLIgunApp(App):
                     summary=analysis.response.summary,
                     explanation=analysis.response.explanation,
                     suggestion=analysis.response.suggestion,
-                    provider=self._provider.provider_name,
+                    provider=self._active_model_label(DEEP),
                     tokens=analysis.response.input_tokens + analysis.response.output_tokens,
                 )
             )
@@ -719,7 +743,16 @@ class RidinCLIgunApp(App):
             self._update_ai_status("offline")
             self._show_connection_error(result.error_message)
 
-    def _show_ai_review(self, command: str, response: AIReviewResponse) -> None:
+    def _active_model_label(self, tier: str) -> str:
+        """Localized "tier · model-id" for the active model.
+
+        Always shown on every review — the active model is never silently substituted
+        (no-silent-fallbacks). E.g. ``"Deep · claude-sonnet-4-6"``.
+        """
+        tier_label = t("router.tier_deep") if tier == DEEP else t("router.tier_fast")
+        return t("router.active", tier=tier_label, model=self._provider.model_id(tier))
+
+    def _show_ai_review(self, command: str, response: AIReviewResponse, tier: str = FAST) -> None:
         """Display an AI review result in the advisory pane. Persists until next review."""
         self._ai_review_showing = True
 
@@ -753,7 +786,7 @@ class RidinCLIgunApp(App):
             lines.append((f"  {t('review.insert_hint')}", "dim cyan"))
             lines.append(("", ""))
 
-        lines.append((f"  — {self._provider.provider_name}", "dim"))
+        lines.append((f"  — {self._active_model_label(tier)}", "dim"))
         total_tokens = response.input_tokens + response.output_tokens
         if total_tokens > 0:
             tok_in = response.input_tokens
@@ -781,7 +814,7 @@ class RidinCLIgunApp(App):
                 summary=response.summary,
                 explanation=response.explanation,
                 suggestion=response.suggestion,
-                provider=self._provider.provider_name,
+                provider=self._active_model_label(tier),
                 tokens=response.input_tokens + response.output_tokens,
             )
         )
@@ -924,41 +957,41 @@ class RidinCLIgunApp(App):
 
         return ""
 
-    # ── Model selector (item j) ────────────────────────────────────
-
-    _MODEL_OPTIONS: list[tuple[str, str, str]] = [
-        # (display_name, provider_kind, model_id)
-        # Mistral: https://docs.mistral.ai/getting-started/models/ — verified 2026-05-16
-        ("Mistral Fast Review", "mistral", "mistral-small-2603"),
-        ("Mistral Deep Review", "mistral", "mistral-medium-3-5"),
-        # Anthropic: https://platform.claude.com/docs/en/docs/about-claude/models
-        ("Claude Fast Review", "anthropic", "claude-haiku-4-5"),
-        ("Claude Deep Review", "anthropic", "claude-sonnet-4-6"),
-        # OpenAI: https://developers.openai.com/api/docs/models
-        # Models per 70_Evaluations/llm_model_evaluation.md (2026-06-03).
-        ("OpenAI Fast Review", "openai", "gpt-5.4-mini"),
-        ("OpenAI Deep Review", "openai", "gpt-5.4"),
-    ]
+    # ── Provider selector (item j) ─────────────────────────────────
 
     def _show_model_selector(self) -> None:
-        """Show model/provider selection in the advisory pane."""
+        """Show provider selection in the advisory pane.
+
+        Provider-only: the user picks a provider; the app maps it to a Fast and a Deep
+        model (both shown — never silently swapped). The router chooses which tier
+        answers each review.
+        """
+        from ridincligun.provider.registry import get_models, provider_kinds
+
         self._model_select_showing = True
-        current = self._provider.provider_name
+        current_kind = self._provider.provider_kind
 
         lines: list[tuple[str, str]] = [
             ("", ""),
             (f"  {t('model.title')}", "bold cyan"),
             ("", ""),
-            (f"  {t('model.current', current=current)}", "bold"),
+            (f"  {t('model.current', current=self._provider.provider_name)}", "bold"),
             ("", ""),
         ]
 
-        for idx, (name, kind, model_id) in enumerate(self._MODEL_OPTIONS, 1):
-            marker = " ◉" if model_id in current else " ○"
-            lines.append((f"  {idx}{marker} {name}", ""))
+        kinds = provider_kinds()
+        fast_label = t("router.tier_fast")
+        deep_label = t("router.tier_deep")
+        for idx, kind in enumerate(kinds, 1):
+            models = get_models(kind)
+            selected = kind == current_kind
+            marker = " ◉" if selected else " ○"
+            lines.append((f"  {idx}{marker} {models.display}", "bold" if selected else ""))
+            lines.append((f"       {fast_label}: {models.fast}", "dim"))
+            lines.append((f"       {deep_label}: {models.deep}", "dim"))
 
         lines.append(("", ""))
-        lines.append((f"  {t('model.select_hint', count=len(self._MODEL_OPTIONS))}", "bold green"))
+        lines.append((f"  {t('model.select_hint', count=len(kinds))}", "bold green"))
         lines.append((f"  {t('model.cancel_hint')}", "dim"))
         lines.append(("", ""))
         lines.append((f"  {t('model.apply_note')}", "dim"))
@@ -971,24 +1004,26 @@ class RidinCLIgunApp(App):
             pass
 
     def _handle_model_select_key(self, key: str) -> bool:
-        """Handle a key press during model selection. Returns True if consumed."""
+        """Handle a key press during provider selection. Returns True if consumed."""
+        from ridincligun.provider.registry import get_models, provider_kinds
+
         if not self._model_select_showing:
             return False
 
         self._model_select_showing = False
 
-        if key.isdigit() and 1 <= int(key) <= len(self._MODEL_OPTIONS):
-            idx = int(key) - 1
-            name, kind, model_id = self._MODEL_OPTIONS[idx]
-            self._switch_model(kind, model_id, name)
+        kinds = provider_kinds()
+        if key.isdigit() and 1 <= int(key) <= len(kinds):
+            kind = kinds[int(key) - 1]
+            self._switch_provider(kind, get_models(kind).display)
             return True
 
         self._toast(t("toast.model_cancelled"))
         self._show_advisory_welcome()
         return True
 
-    def _switch_model(self, kind: str, model_id: str, display_name: str) -> None:
-        """Switch the AI provider/model and persist to config."""
+    def _switch_provider(self, kind: str, display_name: str) -> None:
+        """Switch the AI provider and persist to config (provider-only)."""
         import os
 
         from ridincligun.config import ProviderSettings
@@ -1010,20 +1045,19 @@ class RidinCLIgunApp(App):
 
         api_key = env_vars.get(key_name, "") or os.environ.get(key_name, "") or ""
 
-        # Update config
+        # Update config (provider-only — no model id)
         self.config.provider = ProviderSettings(
             kind=kind,
-            model=model_id,
             timeout_seconds=self.config.provider.timeout_seconds,
             max_tokens=self.config.provider.max_tokens,
         )
         self.config.api_key = api_key
 
-        # Recreate provider
+        # Recreate provider (builds Fast + Deep adapters from the registry)
         self._provider = create_provider(self.config)
 
-        # Persist to config.toml
-        self._persist_provider_config(kind, model_id)
+        # Persist to config.toml (kind only)
+        self._persist_provider_config(kind)
 
         if not api_key:
             self._update_ai_status("offline")
@@ -1042,11 +1076,11 @@ class RidinCLIgunApp(App):
 
         self._sync_status_bar()
 
-    def _persist_provider_config(self, kind: str, model: str) -> None:
-        """Write provider kind and model to config.toml."""
+    def _persist_provider_config(self, kind: str) -> None:
+        """Write the provider kind to config.toml (provider-only)."""
         from ridincligun.config import save_provider_config
 
-        save_provider_config(self.config, kind, model)
+        save_provider_config(self.config, kind)
 
     # ── Review history display (item k) ───────────────────────────
 

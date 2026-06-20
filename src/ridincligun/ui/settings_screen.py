@@ -220,14 +220,6 @@ class SettingsScreen(ModalScreen[str | None]):
             },
             {
                 "section": t("settings.section_ai"),
-                "key": "model",
-                "label": t("settings.model_label", model=self._config.provider.model),
-                "value": self._config.provider.model,
-                "type": "action",
-                "action": "model_select",
-            },
-            {
-                "section": t("settings.section_ai"),
                 "key": "review_mode",
                 "label": self._mode_label(),
                 "value": self._config.review_mode,

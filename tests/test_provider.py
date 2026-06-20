@@ -483,7 +483,7 @@ from ridincligun.provider import create_provider  # noqa: E402
 def test_factory_creates_anthropic_by_default():
     """Factory creates Anthropic provider by default."""
     config = Config(
-        provider=ProviderSettings(kind="anthropic", model="claude-sonnet-4-20250514"),
+        provider=ProviderSettings(kind="anthropic"),
         api_key="sk-ant-test",
     )
     manager = create_provider(config)
@@ -494,7 +494,7 @@ def test_factory_creates_anthropic_by_default():
 def test_factory_creates_openai():
     """Factory creates OpenAI provider when configured."""
     config = Config(
-        provider=ProviderSettings(kind="openai", model="gpt-4o"),
+        provider=ProviderSettings(kind="openai"),
         api_key="sk-test-key",
     )
     manager = create_provider(config)

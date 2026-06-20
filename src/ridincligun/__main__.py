@@ -5,9 +5,11 @@
 """Entry point for `python -m ridincligun`."""
 
 import argparse
+import sys
 
 from ridincligun import __version__
 from ridincligun.app import RidinCLIgunApp
+from ridincligun.config import ConfigError
 
 
 def main() -> None:
@@ -24,7 +26,12 @@ def main() -> None:
     # --version / --help print to stdout and exit before the app is built.
     parser.parse_args()
 
-    app = RidinCLIgunApp()
+    try:
+        app = RidinCLIgunApp()
+    except ConfigError as e:
+        # A broken config.toml should fail with one clear line, not a raw traceback.
+        print(f"ridincligun: {e}", file=sys.stderr)
+        raise SystemExit(1) from e
     app.run()
 
 

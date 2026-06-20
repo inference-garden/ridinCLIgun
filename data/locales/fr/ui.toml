@@ -130,7 +130,7 @@ inserted = "Inséré : {suggestion}\n\nVérifiez avant d'appuyer sur Entrée."
 # ── Model selector ──────────────────────────────────────────────
 
 [model]
-title = "🔧 Sélection du modèle"
+title = "🔧 Sélection du fournisseur"
 current = "Actuel : {current}"
 select_hint = "Tapez 1-{count} pour sélectionner."
 cancel_hint = "Toute autre touche pour annuler."
@@ -142,6 +142,12 @@ add_key = "Ajoutez {key_name} dans"
 env_path = "~/.config/ridincligun/.env"
 restart = "et redémarrez."
 checking = "Vérification de la connexion..."
+
+[router]
+# Niveaux de profondeur d'investigation, affichés avec le modèle actif à chaque revue.
+tier_fast = "Rapide"
+tier_deep = "Approfondi"
+active = "{tier} · {model}"
 
 # ── Deep analysis ───────────────────────────────────────────────
 
@@ -185,14 +191,13 @@ section_keys = "Clés API disponibles"
 section_general = "Général"
 ai_enabled = "IA activée au démarrage"
 provider_label = "Fournisseur : {provider}"
-model_label = "Modèle : {model}"
 review_mode_label = "Mode d'analyse : {mode}"
 redaction_preview = "Afficher l'aperçu de masquage avant l'analyse IA"
 clipboard_safety = "Avertir avant de coller des secrets"
 key_configured = "configurée (...{suffix})"
 key_from_env = "depuis env (...{suffix})"
 key_not_configured = "non configurée"
-hint = "↑↓ naviguer  Espace basculer/parcourir  Entrée modifier/sélectionner\n  ↵ sur Fournisseur/Modèle : ouvrir le sélecteur\n\n  Appuyez sur Échap pour quitter"
+hint = "↑↓ naviguer  Espace basculer/parcourir  Entrée modifier/sélectionner\n  ↵ sur Fournisseur : ouvrir le sélecteur\n\n  Appuyez sur Échap pour quitter"
 key_input_title = "Saisissez la clé API pour {provider}"
 key_input_placeholder = "Collez votre clé API ici..."
 key_input_hint = "Entrée pour enregistrer  Échap pour annuler"

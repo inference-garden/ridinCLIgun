@@ -108,7 +108,7 @@ from ridincligun.provider import create_provider  # noqa: E402
 def test_factory_creates_mistral():
     """Factory creates Mistral provider when configured."""
     config = Config(
-        provider=ProviderSettings(kind="mistral", model="mistral-small-latest"),
+        provider=ProviderSettings(kind="mistral"),
         api_key="test-key",
     )
     manager = create_provider(config)

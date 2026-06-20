@@ -15,6 +15,7 @@ import logging
 import sys
 from dataclasses import dataclass
 
+from ridincligun.advisory.router import DEEP, FAST
 from ridincligun.provider.base import (
     AIReviewResponse,
     ProviderAdapter,
@@ -46,60 +47,90 @@ class ReviewStatus:
 
 
 class ProviderManager:
-    """Manages AI provider lifecycle, timeouts, and error handling."""
+    """Manages AI provider lifecycle, timeouts, and error handling.
+
+    Holds one adapter per **tier** (``"fast"`` / ``"deep"``) of the chosen provider and
+    runs each review on the tier the router selects. The active model is always a plain
+    property lookup (``model_id(tier)``) so it can be shown on every review — the
+    no-silent-fallback rule is non-negotiable.
+
+    Backward-compatible construction: pass either a ``{tier: adapter}`` mapping or a
+    single :class:`ProviderAdapter` (used for both tiers — the legacy single-model form).
+    """
 
     def __init__(
         self,
-        adapter: ProviderAdapter,
+        adapter: ProviderAdapter | dict[str, ProviderAdapter],
         timeout: float = _DEFAULT_TIMEOUT,
+        *,
+        provider_kind: str | None = None,
+        provider_display: str | None = None,
     ) -> None:
-        self._adapter = adapter
+        if isinstance(adapter, dict):
+            self._adapters: dict[str, ProviderAdapter] = dict(adapter)
+        else:
+            # Legacy single-adapter form: the same model answers both tiers.
+            self._adapters = {FAST: adapter, DEEP: adapter}
         self._timeout = timeout
+        self._kind = provider_kind
+        self._display = provider_display
+
+    def _adapter_for(self, tier: str) -> ProviderAdapter:
+        """Return the adapter for *tier*, falling back to Fast (the floor) if unknown."""
+        return self._adapters.get(tier) or self._adapters[FAST]
+
+    @property
+    def provider_kind(self) -> str | None:
+        return self._kind
 
     @property
     def provider_name(self) -> str:
-        return self._adapter.name
+        # Provider display (e.g. "Anthropic") when known; else the adapter's own name
+        # (legacy single-adapter form), which still carries the provider substring.
+        return self._display or self._adapters[FAST].name
 
-    @property
-    def model_id(self) -> str:
-        return self._adapter.model_id
+    def model_id(self, tier: str = FAST) -> str:
+        """Return the model id for *tier* (always visible — never silently swapped)."""
+        return self._adapter_for(tier).model_id
 
     @property
     def is_configured(self) -> bool:
-        return self._adapter.is_configured
+        return self._adapters[FAST].is_configured
 
     async def review(
         self,
         command: str,
         context: str = "",
         system_prompt: str = "",
+        tier: str = FAST,
     ) -> ReviewStatus:
-        """Request an AI review with timeout and error handling.
+        """Request an AI review on *tier* with timeout and error handling.
 
         Always returns a ReviewStatus — never raises.
         """
-        if not self._adapter.is_configured:
+        adapter = self._adapter_for(tier)
+        if not adapter.is_configured:
             return ReviewStatus(
                 success=False,
                 error_message="API key not configured. Add it to ~/.config/ridincligun/.env",
-                provider_name=self._adapter.name,
+                provider_name=adapter.name,
             )
 
         try:
             response = await asyncio.wait_for(
-                self._adapter.review_command(command, context, system_prompt),
+                adapter.review_command(command, context, system_prompt),
                 timeout=self._timeout,
             )
             return ReviewStatus(
                 success=True,
                 response=response,
-                provider_name=self._adapter.name,
+                provider_name=adapter.name,
             )
         except TimeoutError:
             return ReviewStatus(
                 success=False,
                 error_message=f"Review timed out after {self._timeout:.0f}s.",
-                provider_name=self._adapter.name,
+                provider_name=adapter.name,
             )
         except ProviderRateLimitError as e:
             # Rate limit (429) is transient — tell the user to retry rather than
@@ -109,7 +140,7 @@ class ProviderManager:
             return ReviewStatus(
                 success=False,
                 error_message="Rate limited by the provider — wait a moment and try again.",
-                provider_name=self._adapter.name,
+                provider_name=adapter.name,
             )
         except ProviderSetupError as e:
             # Local setup gap (SDK not installed, key not configured). The message
@@ -119,7 +150,7 @@ class ProviderManager:
             return ReviewStatus(
                 success=False,
                 error_message=str(e),
-                provider_name=self._adapter.name,
+                provider_name=adapter.name,
             )
         except ProviderError as e:
             # Log full error for debugging; show only safe message to user
@@ -127,7 +158,7 @@ class ProviderManager:
             return ReviewStatus(
                 success=False,
                 error_message="AI review failed — check connection and try again.",
-                provider_name=self._adapter.name,
+                provider_name=adapter.name,
             )
         except Exception as e:
             # Log full exception for debugging; never expose raw details to UI
@@ -135,5 +166,5 @@ class ProviderManager:
             return ReviewStatus(
                 success=False,
                 error_message="AI review failed — check connection and try again.",
-                provider_name=self._adapter.name,
+                provider_name=adapter.name,
             )

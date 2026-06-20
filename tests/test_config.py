@@ -6,7 +6,13 @@
 
 import pytest
 
-from ridincligun.config import Config, load_config, save_provider_config, save_split_ratio
+from ridincligun.config import (
+    Config,
+    ConfigError,
+    load_config,
+    save_provider_config,
+    save_split_ratio,
+)
 
 
 @pytest.fixture
@@ -53,7 +59,9 @@ def test_config_reads_toml(tmp_config_dir):
     config = load_config(config_dir=tmp_config_dir)
 
     assert config.ai_enabled_default is True
-    assert config.provider.model == "claude-haiku-3"
+    # A vestigial `model` key in an existing config is silently ignored (no migration).
+    assert config.provider.kind == "anthropic"
+    assert not hasattr(config.provider, "model")
     assert config.provider.timeout_seconds == 5.0
     assert config.split_ratio == (2, 3)
 
@@ -136,8 +144,8 @@ def _write_provider_toml(config_dir, kind: str, model: str) -> None:
     )
 
 
-def test_save_provider_config_persists_kind_and_model(tmp_config_dir):
-    """save_provider_config writes kind and model and load_config reads them back."""
+def test_save_provider_config_persists_kind(tmp_config_dir):
+    """save_provider_config writes the provider kind and load_config reads it back."""
     tmp_config_dir.mkdir(parents=True, exist_ok=True)
     _write_provider_toml(tmp_config_dir, "anthropic", "claude-sonnet-4-20250514")
     (tmp_config_dir / ".env").write_text("")
@@ -145,18 +153,36 @@ def test_save_provider_config_persists_kind_and_model(tmp_config_dir):
     config = load_config(config_dir=tmp_config_dir)
     assert config.provider.kind == "anthropic"
 
-    save_provider_config(config, "mistral", "mistral-large-latest")
+    save_provider_config(config, "mistral")
 
     reloaded = load_config(config_dir=tmp_config_dir)
     assert reloaded.provider.kind == "mistral"
-    assert reloaded.provider.model == "mistral-large-latest"
 
 
 def test_save_provider_config_no_crash_on_missing_file(tmp_config_dir):
     """save_provider_config does not crash if config.toml is missing."""
     config = Config(config_dir=tmp_config_dir)
     # config_file doesn't exist — should silently return
-    save_provider_config(config, "openai", "gpt-4o")
+    save_provider_config(config, "openai")
+
+
+def test_load_config_raises_clean_error_on_malformed_toml(tmp_config_dir):
+    """A malformed config.toml fails closed with a clear ConfigError (line + path),
+    never a raw traceback and never a silent fallback to defaults."""
+    tmp_config_dir.mkdir(parents=True, exist_ok=True)
+    # Duplicate [provider] table — exactly the kind of hand-edit that breaks TOML.
+    (tmp_config_dir / "config.toml").write_text(
+        '[provider]\nkind = "anthropic"\n[provider]\nmodel = "x"\n'
+    )
+    (tmp_config_dir / ".env").write_text("")
+
+    with pytest.raises(ConfigError) as exc:
+        load_config(config_dir=tmp_config_dir)
+
+    msg = str(exc.value)
+    assert "config.toml" in msg
+    assert "delete" in msg.lower()
+    assert "line" in msg.lower()  # the parser error names the offending line
 
 
 def test_load_config_reads_mistral_api_key(tmp_config_dir):
@@ -207,10 +233,9 @@ def test_provider_switch_survives_restart(tmp_config_dir):
     assert config.provider.kind == "anthropic"
 
     # Simulate user switching to OpenAI at runtime
-    save_provider_config(config, "openai", "gpt-4o-mini")
+    save_provider_config(config, "openai")
 
     # Simulate restart
     reloaded = load_config(config_dir=tmp_config_dir)
     assert reloaded.provider.kind == "openai"
-    assert reloaded.provider.model == "gpt-4o-mini"
     assert reloaded.api_key == "sk-openai-new"

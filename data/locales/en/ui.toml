@@ -130,7 +130,7 @@ inserted = "Inserted: {suggestion}\n\nReview before pressing Enter."
 # ── Model selector ──────────────────────────────────────────────
 
 [model]
-title = "🔧 Model Selection"
+title = "🔧 Provider Selection"
 current = "Current: {current}"
 select_hint = "Type 1-{count} to select."
 cancel_hint = "Any other key to cancel."
@@ -142,6 +142,12 @@ add_key = "Add {key_name} to"
 env_path = "~/.config/ridincligun/.env"
 restart = "and restart."
 checking = "Checking connection..."
+
+[router]
+# Investigation-depth tier labels, shown with the active model id on every review.
+tier_fast = "Fast"
+tier_deep = "Deep"
+active = "{tier} · {model}"
 
 # ── Deep analysis ───────────────────────────────────────────────
 
@@ -185,14 +191,13 @@ section_keys = "Available API-Keys"
 section_general = "General"
 ai_enabled = "AI enabled at startup"
 provider_label = "Provider: {provider}"
-model_label = "Model: {model}"
 review_mode_label = "Review mode: {mode}"
 redaction_preview = "Show redaction preview before AI review"
 clipboard_safety = "Warn before pasting secrets"
 key_configured = "configured (...{suffix})"
 key_from_env = "from env (...{suffix})"
 key_not_configured = "not configured"
-hint = "↑↓ navigate  Space toggle/cycle  Enter edit/select\n  ↵ on Provider/Model: open model selector\n\n  Press ESC to exit"
+hint = "↑↓ navigate  Space toggle/cycle  Enter edit/select\n  ↵ on Provider: open provider selector\n\n  Press ESC to exit"
 key_input_title = "Enter API key for {provider}"
 key_input_placeholder = "Paste your API key here..."
 key_input_hint = "Enter to save  Escape to cancel"
